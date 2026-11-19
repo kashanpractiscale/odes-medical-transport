@@ -1,6 +1,5 @@
 "use client";
 
-import gsap from "gsap";
 import Image from "next/image";
 import { useEffect, useRef, useState } from "react";
 import { useReducedMotion } from "@/components/hero/useReducedMotion";
@@ -11,8 +10,10 @@ import { boot, MILESTONES } from "./boot";
 // script runs, rather than when React reaches the hero; next/dynamic reuses the request.
 if (typeof window !== "undefined") void import("@/components/ambulance/AmbulanceStage");
 
-const MIN_SHOW = 1.2; // s: long enough to read as intentional, never a flash
-const GIVE_UP = 9; // s: open anyway (slow network, no WebGL) — the page works without the van
+const MIN_SHOW = 1200; // ms: long enough to read as intentional, never a flash
+const GIVE_UP = 9000; // ms: open anyway (slow network, no WebGL) — the page works without the van
+const TICK = 50; // ms: bookkeeping cadence (milestones, text); motion itself is on the compositor
+const SAMPLES = 60; // keyframes per glide
 
 const STATUS = [
   [0, "Preparing your ride"],
@@ -26,49 +27,65 @@ const statusFor = (p: number) => STATUS.reduce<string>((m, [at, text]) => (p >= 
  * Side-on van, drawn to the 3D model's Transit EL High Roof figures (18 units per metre,
  * ground at y = 52): 6.70 m long, 2.80 m tall, axles 1.96 m and 5.71 m from the rear,
  * 0.356 m tyres, roof cap at 4.40 m, windshield 5.13–5.91 m, hood edge 6.55 m.
+ * The wheels are separate HTML elements (below) so they can spin on the compositor.
  */
 const VAN_W = 122;
+const VAN_H = 54;
 const AXLES = [35.3, 102.8];
 const WHEEL_Y = 45.8;
+const WHEEL_R = 6.4;
 const BODY =
   "M1 44.4V4Q1 1.6 3.4 1.6H79Q86 2.5 92 10.6L106 25.4L118 31Q120.6 32 120.6 35V44.4H110.5A7.7 7.7 0 0 0 95.1 44.4H43A7.7 7.7 0 0 0 27.6 44.4Z";
 
 function Van() {
   return (
-    <svg viewBox={`0 0 ${VAN_W} 54`} className="block h-auto w-full overflow-visible" aria-hidden>
-      <defs>
-        <clipPath id="loader-van-body">
-          <path d={BODY} />
-        </clipPath>
-        <linearGradient id="loader-van-paint" x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0" stopColor="#ffffff" />
-          <stop offset="1" stopColor="#d5dedc" />
-        </linearGradient>
-      </defs>
-      <ellipse cx="62" cy="52.4" rx="60" ry="2.2" fill="#000" opacity=".45" />
-      <path d={BODY} fill="url(#loader-van-paint)" />
-      <g clipPath="url(#loader-van-body)">
-        <rect x="0" y="31.4" width="122" height="1.1" fill="#d9a441" />
-        <rect x="0" y="33.2" width="122" height="3.6" fill="#0f766e" />
-      </g>
-      {/* patient windows, cab window, headlamp */}
-      <g fill="#0b2422">
-        <rect x="9" y="17.4" width="20" height="10.8" rx="1.6" />
-        <rect x="33" y="17.4" width="20" height="10.8" rx="1.6" />
-        <rect x="57" y="17.4" width="19" height="10.8" rx="1.6" />
-        <path d="M84.5 13H91.4L102.6 25.2H84.5Z" />
-      </g>
-      <path d="M116.4 31.4L120.3 33V35.2H116.4Z" fill="#fff4d6" />
-      {AXLES.map((cx) => (
-        <g key={cx} data-wheel>
-          <circle cx={cx} cy={WHEEL_Y} r="6.4" fill="#0b1212" />
-          <circle cx={cx} cy={WHEEL_Y} r="3.7" fill="#c9d3d1" />
-          <circle cx={cx} cy={WHEEL_Y} r="1.1" fill="#0b1212" />
-          <rect x={cx - 0.6} y={WHEEL_Y - 3.6} width="1.2" height="2" fill="#0b1212" />
-          <rect x={cx - 0.6} y={WHEEL_Y + 1.6} width="1.2" height="2" fill="#0b1212" />
+    <div className="relative">
+      <svg viewBox={`0 0 ${VAN_W} ${VAN_H}`} className="block h-auto w-full overflow-visible" aria-hidden>
+        <defs>
+          <clipPath id="loader-van-body">
+            <path d={BODY} />
+          </clipPath>
+          <linearGradient id="loader-van-paint" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0" stopColor="#ffffff" />
+            <stop offset="1" stopColor="#d5dedc" />
+          </linearGradient>
+        </defs>
+        <ellipse cx="62" cy="52.4" rx="60" ry="2.2" fill="#000" opacity=".45" />
+        <path d={BODY} fill="url(#loader-van-paint)" />
+        <g clipPath="url(#loader-van-body)">
+          <rect x="0" y="31.4" width="122" height="1.1" fill="#d9a441" />
+          <rect x="0" y="33.2" width="122" height="3.6" fill="#0f766e" />
         </g>
+        {/* patient windows, cab window, headlamp */}
+        <g fill="#0b2422">
+          <rect x="9" y="17.4" width="20" height="10.8" rx="1.6" />
+          <rect x="33" y="17.4" width="20" height="10.8" rx="1.6" />
+          <rect x="57" y="17.4" width="19" height="10.8" rx="1.6" />
+          <path d="M84.5 13H91.4L102.6 25.2H84.5Z" />
+        </g>
+        <path d="M116.4 31.4L120.3 33V35.2H116.4Z" fill="#fff4d6" />
+      </svg>
+      {AXLES.map((cx) => (
+        <div
+          key={cx}
+          data-wheel
+          className="loader-wheel absolute aspect-square"
+          style={{
+            left: `${((cx - WHEEL_R) / VAN_W) * 100}%`,
+            top: `${((WHEEL_Y - WHEEL_R) / VAN_H) * 100}%`,
+            width: `${((WHEEL_R * 2) / VAN_W) * 100}%`,
+          }}
+        >
+          <svg viewBox="-6.4 -6.4 12.8 12.8" className="block size-full" aria-hidden>
+            <circle r="6.4" fill="#0b1212" />
+            <circle r="3.7" fill="#c9d3d1" />
+            <circle r="1.1" fill="#0b1212" />
+            <rect x="-0.6" y="-3.6" width="1.2" height="2" fill="#0b1212" />
+            <rect x="-0.6" y="1.6" width="1.2" height="2" fill="#0b1212" />
+          </svg>
+        </div>
       ))}
-    </svg>
+    </div>
   );
 }
 
@@ -87,6 +104,29 @@ function Drum({ dim }: { dim?: boolean }) {
   );
 }
 
+// ---------------------------------------------------------------------------
+// Pure motion maths (shared by the keyframe builder and the bookkeeping loop)
+
+const easeOut = (t: number) => 1 - Math.pow(1 - t, 3);
+
+/** A glide of the displayed progress from v0 to v1 (0‥1), started at t0 (ms). */
+type Glide = { v0: number; v1: number; t0: number; dur: number };
+const valueAt = (g: Glide, now: number) => {
+  const k = g.dur <= 0 ? 1 : Math.min(1, Math.max(0, (now - g.t0) / g.dur));
+  return g.v0 + (g.v1 - g.v0) * easeOut(k);
+};
+
+/** Drum positions (in digit cells) for a percentage: units roll continuously; tens and
+ *  hundreds turn only while the drum below rolls over from 9, as on a real odometer. */
+function drumPositions(pct: number): [number, number, number] {
+  if (pct >= 100) return [1, 0, 0];
+  const u = pct % 10;
+  const tens = Math.floor(pct / 10) % 10;
+  const carry = Math.max(0, u - 9);
+  return [tens === 9 ? carry : 0, tens + carry, u];
+}
+const drumY = (cells: number) => `translateY(${(-cells * 100) / 11}%)`;
+
 /**
  * Loading screen in the hero's studio light. A small side-on Odes van drives a route from
  * "Pickup" to "Your appointment" along the screen's centre line, passing a tick for each
@@ -94,8 +134,11 @@ function Drum({ dim }: { dim?: boolean }) {
  * the percentage. When everything is ready the van drives off, the road flares and the
  * screen parts along it, top half up, bottom half down, as the 3D van drives in.
  *
- * Cost: per frame it writes only transforms (and only when a value moved); text and ARIA
- * change a few times in total; React never re-renders during the load.
+ * Smoothness: the page's main thread is blocked several times while three.js parses and
+ * the van is built, so nothing here is animated frame-by-frame from JavaScript. Each time
+ * a milestone lands, the loader hands the compositor a complete glide (Web Animations
+ * keyframes for the van, the gold line and every odometer drum; CSS for the wheels), and
+ * the motion carries on through any freeze. JavaScript only does bookkeeping every 50 ms.
  */
 export function Loader() {
   const root = useRef<HTMLDivElement>(null);
@@ -114,24 +157,19 @@ export function Loader() {
       el.style.display = "none";
       return;
     }
-    const q = gsap.utils.selector(el);
+    const $ = (s: string) => el.querySelector<HTMLElement>(s)!;
+    const $$ = (s: string) => [...el.querySelectorAll<HTMLElement>(s)];
     const html = document.documentElement;
     html.style.overflow = "hidden";
 
-    const track = q("[data-track]")[0] as HTMLElement;
-    const bar = q("[data-bar]")[0] as HTMLElement;
-    const fill = q("[data-fill]")[0] as HTMLElement;
-    const van = q("[data-van]")[0] as HTMLElement;
-    const wheels = q("[data-wheel]");
-    const drums = q("[data-drum]") as HTMLElement[];
-    const ticks = q("[data-tick]") as HTMLElement[];
-    const status = q("[data-status]")[0] as HTMLElement;
-
-    const setVanX = gsap.quickSetter(van, "x", "px");
-    const setFill = gsap.quickSetter(fill, "scaleX");
-    const setWheels = gsap.quickSetter(wheels, "rotation", "deg");
-    const setDrum = drums.map((d) => gsap.quickSetter(d, "yPercent"));
-    gsap.set(wheels, { transformOrigin: "50% 50%" });
+    const track = $("[data-track]");
+    const bar = $("[data-bar]");
+    const fill = $("[data-fill]");
+    const van = $("[data-van]");
+    const drums = $$("[data-drum]");
+    const ticks = $$("[data-tick]");
+    const status = $("[data-status]");
+    const wheelSpin = $$("[data-wheel]").flatMap((w) => w.getAnimations());
 
     let W = 1;
     let vanW = 1;
@@ -140,103 +178,158 @@ export function Loader() {
       vanW = van.offsetWidth;
     };
     measure();
-    window.addEventListener("resize", measure);
 
     const start = performance.now();
-    let shown = 0;
-    let last = -1;
+    let glide: Glide = { v0: 0, v1: 0, t0: start, dur: 0 };
+    let running: Animation[] = [];
+    let wheelStop = 0;
     let lastInt = -1;
-    let lastStatus = "";
     let leaving = false;
 
-    const draw = (p: number) => {
-      if (Math.abs(p - last) < 0.0005) return;
-      last = p;
-      const x = p * (W - vanW);
-      setVanX(x);
-      setFill((x + vanW * 0.55) / W);
-      setWheels(((x / (vanW * (6.4 / VAN_W))) * 180) / Math.PI);
-      // odometer: each digit rests, then rolls over in the last 35 % of its step; a higher
-      // drum turns only while every drum below it is rolling over from 9
-      const v = p * 100;
-      const whole = Math.floor(v);
-      const f = v - whole;
-      const roll = f < 0.65 ? 0 : ((f - 0.65) / 0.35) ** 2 * (3 - 2 * ((f - 0.65) / 0.35));
-      const u = whole % 10;
-      const t10 = Math.floor(whole / 10) % 10;
-      const pos =
-        v >= 100
-          ? [1, 0, 0]
-          : [u === 9 && t10 === 9 ? roll : 0, t10 + (u === 9 ? roll : 0), u + roll];
-      setDrum.forEach((set, i) => set((-pos[i] * 100) / 11));
-
-      const n = Math.round(v);
-      if (n === lastInt) return;
-      lastInt = n;
-      bar.setAttribute("aria-valuenow", String(n));
-      drums[0].toggleAttribute("data-dim", n < 100);
-      drums[1].toggleAttribute("data-dim", n < 10);
-      ticks.forEach((t) => t.toggleAttribute("data-on", p >= Number(t.dataset.at) - 0.002));
-      const s = statusFor(p);
-      if (s !== lastStatus) {
-        lastStatus = s;
-        status.textContent = s;
-      }
+    /** Where the glide actually is on screen: the running animation's own clock, which
+     *  starts a frame or more late on a busy page, rather than wall time. */
+    const shownNow = () => {
+      const a = running[0];
+      if (!a || glide.dur <= 0) return valueAt(glide, performance.now());
+      const k = Math.min(1, Math.max(0, Number(a.currentTime ?? 0) / glide.dur));
+      return glide.v0 + (glide.v1 - glide.v0) * easeOut(k);
     };
 
-    const tick = () => {
-      const t = (performance.now() - start) / 1000;
-      if (t > GIVE_UP) (["fonts", "stage", "model", "frame"] as const).forEach((s) => boot.mark(s));
+    const xAt = (p: number) => p * (W - vanW);
+    const fillAt = (p: number) => (xAt(p) + vanW * 0.55) / W;
+
+    /** Static placement (reduced motion, and the resting state between glides). */
+    const place = (p: number) => {
+      van.style.transform = `translateX(${xAt(p)}px)`;
+      fill.style.transform = `scaleX(${fillAt(p)})`;
+      drumPositions(p * 100).forEach((c, i) => (drums[i].style.transform = drumY(c)));
+    };
+
+    /** Hand the compositor a full glide from the current value to `to`. */
+    const glideTo = (to: number, now: number) => {
+      const from = shownNow();
+      const dur = reduced ? 0 : to >= 1 ? 350 : Math.min(3200, Math.max(900, 900 + (to - from) * 6000));
+      glide = { v0: from, v1: to, t0: now, dur };
+      place(to); // the resting state once the glide has played out
+      if (reduced) return;
+
+      const vanK: Keyframe[] = [];
+      const fillK: Keyframe[] = [];
+      const drumK: Keyframe[][] = [[], [], []];
+      let prev: number[] | null = null;
+      for (let i = 0; i <= SAMPLES; i++) {
+        const k = i / SAMPLES;
+        const p = from + (to - from) * easeOut(k);
+        vanK.push({ offset: k, transform: `translateX(${xAt(p)}px)` });
+        fillK.push({ offset: k, transform: `scaleX(${fillAt(p)})` });
+        const cells = drumPositions(p * 100);
+        cells.forEach((c, j) => {
+          if (prev && c < prev[j] - 0.5) {
+            // 9 → 0: roll on to the trailing "0" cell, then snap to the identical first cell
+            const mid = (k + (i - 1) / SAMPLES) / 2;
+            drumK[j].push({ offset: mid, transform: drumY(10) }, { offset: mid, transform: drumY(0) });
+          }
+          drumK[j].push({ offset: k, transform: drumY(c) });
+        });
+        prev = cells;
+      }
+      const opts: KeyframeAnimationOptions = { duration: dur, easing: "linear", fill: "forwards" };
+      const next = [
+        van.animate(vanK, opts),
+        fill.animate(fillK, opts),
+        ...drums.map((d, j) => d.animate(drumK[j], opts)),
+      ];
+      running.forEach((a) => a.cancel());
+      running = next;
+
+      // wheels turn while the van is moving
+      wheelSpin.forEach((a) => a.play());
+      window.clearTimeout(wheelStop);
+      wheelStop = window.setTimeout(() => wheelSpin.forEach((a) => a.pause()), dur * 0.8);
+    };
+
+    const onResize = () => {
+      measure();
+      glideTo(glide.v1, performance.now());
+    };
+    window.addEventListener("resize", onResize);
+
+    // Bookkeeping: new milestones retarget the glide; text, ticks and ARIA follow.
+    const loop = window.setInterval(() => {
+      const now = performance.now();
+      if (now - start > GIVE_UP) (["fonts", "stage", "model", "frame"] as const).forEach((s) => boot.mark(s));
       const target = boot.progress();
-      // ease toward the real value, and creep a little inside the current milestone so a
-      // slow download still feels alive — but never past what has actually loaded
-      const ceiling = target < 1 ? Math.min(target + 0.12, 0.99) : 1;
-      // time-based (deltaRatio = frames' worth of time at 60 fps), so a slow device that
-      // only manages a few fps still sees the same pace; only ever moves forward
-      const k = gsap.ticker.deltaRatio(60);
-      const rate = target >= 1 ? 0.2 : 0.09; // finish briskly once everything is ready
-      shown += Math.max(0, target - shown) * (1 - Math.pow(1 - rate, k));
-      if (shown < ceiling && target < 1) shown += 0.0009 * k;
-      shown = Math.min(shown, ceiling);
-      const p = target >= 1 && shown > 0.995 ? 1 : shown;
-      draw(p);
-      if (p >= 1 && t >= MIN_SHOW && !leaving) {
+      // aim a little past what has loaded so a slow download still creeps forward,
+      // but never to 100 % before everything is actually ready
+      const goal = target < 1 ? Math.min(target + 0.12, 0.99) : 1;
+      if (goal > glide.v1 + 1e-4) glideTo(goal, now);
+
+      const p = shownNow();
+      const n = Math.round(p * 100);
+      if (n !== lastInt) {
+        lastInt = n;
+        bar.setAttribute("aria-valuenow", String(n));
+        drums[0].toggleAttribute("data-dim", n < 100);
+        drums[1].toggleAttribute("data-dim", n < 10);
+        ticks.forEach((t) => t.toggleAttribute("data-on", p >= Number(t.dataset.at) - 0.002));
+        const s = statusFor(p);
+        if (status.textContent !== s) status.textContent = s;
+      }
+      // leave only once the final glide has really finished on screen
+      const arrived = glide.v1 >= 1 && (reduced || running[0]?.playState === "finished");
+      if (arrived && now - start >= MIN_SHOW && !leaving) {
         leaving = true;
         leave();
       }
-    };
-    gsap.ticker.add(tick);
+    }, TICK);
 
     const finish = () => {
       html.style.overflow = "";
       setGone(true);
     };
 
+    /** Exit, also entirely on the compositor so the hero starting up cannot stutter it. */
     function leave() {
-      gsap.ticker.remove(tick);
+      window.clearInterval(loop);
+      window.clearTimeout(wheelStop);
       if (reduced) {
         boot.reveal();
-        gsap.to(el!, { autoAlpha: 0, duration: 0.35, ease: "power1.out", onComplete: finish });
+        el!.animate([{ opacity: 1 }, { opacity: 0 }], { duration: 350, easing: "ease-out", fill: "forwards" }).finished.then(finish);
         return;
       }
-      const tl = gsap.timeline({ onComplete: finish });
-      // the van pulls away off the right edge…
-      tl.to(van, { x: W + 80, duration: 0.5, ease: "power2.in" })
-        .to(wheels, { rotation: "+=600", duration: 0.5, ease: "power2.in" }, "<")
-        .to(fill, { scaleX: 1, duration: 0.35, ease: "power2.inOut" }, "<")
-        .to(q("[data-out]"), { autoAlpha: 0, y: (i) => (i % 2 ? 18 : -18), duration: 0.3, ease: "power2.in", stagger: 0.02 }, "<")
-        .to(q("[data-dashes], [data-tick]"), { opacity: 0, duration: 0.25 }, "<")
-        // …the road flares, and the screen parts along it while the 3D van drives in
-        .to(fill, { scaleY: 3, duration: 0.18, ease: "power2.out" }, "-=0.2")
-        .add(() => boot.reveal())
-        .to(q("[data-panel='top']"), { yPercent: -100, duration: 0.95, ease: "power4.inOut" })
-        .to(q("[data-panel='bottom']"), { yPercent: 100, duration: 0.95, ease: "power4.inOut" }, "<")
-        .to(fill, { opacity: 0, duration: 0.35 }, "<0.15");
+      const f = (o: KeyframeAnimationOptions) => ({ fill: "forwards" as const, ...o });
+      const IN = "cubic-bezier(0.55, 0.085, 0.68, 0.53)";
+      const IN_OUT = "cubic-bezier(0.77, 0, 0.175, 1)";
+      const x0 = xAt(1);
+      // the van pulls away off the right edge, wheels spinning up…
+      van.animate([{ transform: `translateX(${x0}px)` }, { transform: `translateX(${W + 80}px)` }], f({ duration: 500, easing: IN }));
+      wheelSpin.forEach((a) => {
+        a.playbackRate = 2.5;
+        a.play();
+      });
+      $$("[data-out]").forEach((o, i) =>
+        o.animate(
+          [{ opacity: 1, transform: "none" }, { opacity: 0, transform: `translateY(${i % 2 ? 18 : -18}px)` }],
+          f({ duration: 300, delay: i * 20, easing: IN }),
+        ),
+      );
+      $$("[data-dashes], [data-tick]").forEach((o) => o.animate([{ opacity: 1 }, { opacity: 0 }], f({ duration: 250 })));
+      // …the road flares, and the screen parts along it while the 3D van drives in
+      fill.animate([{ transform: "scaleX(1) scaleY(1)" }, { transform: "scaleX(1) scaleY(3)" }], f({ duration: 180, delay: 300, easing: "ease-out" }));
+      fill.animate([{ opacity: 1 }, { opacity: 0 }], f({ duration: 350, delay: 630 }));
+      const OPEN_AT = 480;
+      window.setTimeout(() => boot.reveal(), OPEN_AT);
+      $("[data-panel='top']").animate([{ transform: "none" }, { transform: "translateY(-100%)" }], f({ duration: 950, delay: OPEN_AT, easing: IN_OUT }));
+      $("[data-panel='bottom']")
+        .animate([{ transform: "none" }, { transform: "translateY(100%)" }], f({ duration: 950, delay: OPEN_AT, easing: IN_OUT }))
+        .finished.then(finish);
     }
 
     return () => {
-      gsap.ticker.remove(tick);
-      window.removeEventListener("resize", measure);
+      window.clearInterval(loop);
+      window.clearTimeout(wheelStop);
+      window.removeEventListener("resize", onResize);
+      running.forEach((a) => a.cancel());
       html.style.overflow = "";
     };
   }, [reduced]);
@@ -281,7 +374,13 @@ export function Loader() {
       >
         <div data-track className="relative h-[2px]">
           <div data-dashes className="loader-dashes absolute inset-0 opacity-35" />
-          <div data-fill className="absolute inset-0 origin-left scale-x-0 bg-gold shadow-[0_0_14px_rgb(217_164_65/0.75)] will-change-transform" />
+          {/* inline transform, not Tailwind's scale-x-0: v4 uses the separate `scale`
+              property, which would multiply with the animated transform */}
+          <div
+            data-fill
+            style={{ transform: "scaleX(0)" }}
+            className="absolute inset-0 origin-left bg-gold shadow-[0_0_14px_rgb(217_164_65/0.75)] will-change-transform"
+          />
           {MILESTONES.slice(0, -1).map((at) => (
             <span
               key={at}
@@ -293,8 +392,7 @@ export function Loader() {
           ))}
           {/* the van rides on the line; its beam lights the road ahead */}
           <div data-van className="absolute bottom-0 left-0 w-[clamp(84px,9vw,136px)] will-change-transform">
-            {/* CSS (compositor) idle: engine shimmy and beam flicker keep moving even while
-                the main thread is busy parsing three.js or building the van */}
+            {/* CSS (compositor) idle: engine shimmy and beam flicker */}
             <div className="loader-idle">
               <div className="loader-beam absolute bottom-[14%] left-[97%] h-[42%] w-[clamp(80px,12vw,180px)]" />
               <Van />
