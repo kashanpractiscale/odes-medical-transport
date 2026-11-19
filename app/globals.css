@@ -1,26 +1,219 @@
 @import "tailwindcss";
 
-:root {
-  --background: #ffffff;
-  --foreground: #171717;
-}
+/* Height-aware variants: short laptop screens (e.g. 1536×730 at 125 % scaling) and
+   phones held sideways need tighter vertical rhythm than width breakpoints give. */
+@custom-variant compact (@media (max-height: 800px));
+@custom-variant short (@media (max-height: 560px) and (orientation: landscape));
+/* Very short portrait phones (e.g. 320×568). */
+@custom-variant tiny (@media (max-height: 620px) and (orientation: portrait));
+/* Matches the 3D camera's side-by-side composition (width ≥ 1024 and aspect > 1.2). */
+@custom-variant wide (@media (min-width: 1024px) and (min-aspect-ratio: 6/5));
 
 @theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  --font-sans: var(--font-barlow), ui-sans-serif, system-ui, sans-serif;
+  --font-display: var(--font-anton), "Arial Narrow", Impact, sans-serif;
+  --font-condensed: var(--font-barlow-condensed), "Arial Narrow", sans-serif;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
+@theme {
+  /* Odes brand (sampled from the supplied logo artwork) */
+  --color-teal: #0f766e;
+  --color-teal-deep: #0b4f4a;
+  --color-gold: #d9a441;
+  --color-gold-light: #e6b85f;
+  --color-ink: #071211;
+  --color-paper: #f5f7f6;
+}
+
+html {
+  scroll-behavior: auto;
+}
+
+/* Studio backdrop: deep teal cyclorama, overhead key light, soft vignette and film grain. */
+.studio-backdrop {
+  background:
+    radial-gradient(55% 60% at 50% -5%, rgb(255 255 255 / 0.10), transparent 70%),
+    radial-gradient(70% 55% at 62% 58%, rgb(15 118 110 / 0.34), transparent 72%),
+    radial-gradient(45% 35% at 15% 85%, rgb(217 164 65 / 0.08), transparent 70%),
+    linear-gradient(180deg, #0d2524 0%, #081615 48%, #030909 100%);
+}
+@media (max-width: 1023px) {
+  .studio-backdrop {
+    background:
+      radial-gradient(70% 45% at 50% -5%, rgb(255 255 255 / 0.10), transparent 70%),
+      radial-gradient(90% 45% at 50% 34%, rgb(15 118 110 / 0.36), transparent 72%),
+      linear-gradient(180deg, #0d2524 0%, #081615 52%, #030909 100%);
   }
 }
 
-body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+/* Services: continues the hero's dark studio so the floating van stays in one world. */
+.services-backdrop {
+  background:
+    radial-gradient(60% 40% at 78% 30%, rgb(15 118 110 / 0.22), transparent 70%),
+    radial-gradient(50% 35% at 10% 85%, rgb(217 164 65 / 0.06), transparent 70%),
+    linear-gradient(180deg, #040a0a 0%, #071413 18%, #081a19 60%, #050d0d 100%);
+}
+
+/* Overhead light cone */
+.studio-beam {
+  background: conic-gradient(from 180deg at 58% -12%, transparent 161deg, rgb(255 255 255 / 0.055) 172deg, rgb(255 255 255 / 0.085) 180deg, rgb(255 255 255 / 0.055) 188deg, transparent 199deg);
+  mask-image: linear-gradient(180deg, #000 0%, #000 45%, transparent 85%);
+}
+
+.studio-vignette {
+  background: radial-gradient(120% 90% at 55% 50%, transparent 55%, rgb(0 0 0 / 0.55) 100%);
+}
+
+.studio-grain {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 1 0 0 0 0 1 0 0 0 0 1 0 0 0 0.6 0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+  opacity: 0.05;
+  mix-blend-mode: overlay;
+}
+
+/* Chapter colour washes (scrubbed in with the story) */
+.wash-gold {
+  background: radial-gradient(60% 55% at 60% 60%, rgb(217 164 65 / 0.22), transparent 70%);
+}
+.wash-red {
+  background: radial-gradient(55% 50% at 55% 40%, rgb(220 38 38 / 0.18), transparent 70%);
+}
+
+/* Caption layer anchored to the 3D scene: turns with the camera orbit and is lit by the
+   vehicle's lamps (custom properties are driven from the render loop). */
+.scene-text {
+  transform: perspective(1400px) rotateY(var(--cap-yaw, 0deg)) translateX(var(--cap-tx, 0px));
+  transform-origin: 30% 50%;
+}
+/* Copy sits in the studio light: a soft shadow falls away from the strongest light
+   (--sx/--sy, driven from the render loop). No glow. */
+.scene-text :is(h1, h2) {
+  text-shadow: calc(var(--sx, -0.42) * 14px) calc(var(--sy, 0.9) * 14px) 26px rgb(0 0 0 / 0.5);
+}
+.scene-text p {
+  text-shadow: calc(var(--sx, -0.42) * 5px) calc(var(--sy, 0.9) * 5px) 12px rgb(0 0 0 / 0.55);
+}
+
+/* Depth planes inside each caption: parallax with the shared pointer, so the copy moves
+   like objects at different distances in the same space as the van. Uses the individual
+   `translate` property so it composes with GSAP's transform animations. */
+.scene-text .depth-far { translate: calc(var(--px, 0) * -5px) calc(var(--py, 0) * -3px); }
+.scene-text .depth-mid { translate: calc(var(--px, 0) * -11px) calc(var(--py, 0) * -6px); }
+.scene-text .depth-near { translate: calc(var(--px, 0) * -16px) calc(var(--py, 0) * -9px); }
+.scene-text .depth-front { translate: calc(var(--px, 0) * -22px) calc(var(--py, 0) * -12px); }
+
+/* CTAs as physical objects in the studio: a lit top edge and a soft contact shadow
+   cast away from the light. */
+.scene-cta {
+  box-shadow:
+    inset 0 1px 0 rgb(255 255 255 / 0.35),
+    calc(var(--sx, -0.42) * 12px) calc(var(--sy, 0.9) * 14px) 30px -6px rgb(0 0 0 / 0.6);
+}
+/* Glass: refracts the 3D studio behind it. */
+.scene-glass {
+  background: linear-gradient(180deg, rgb(255 255 255 / 0.14), rgb(255 255 255 / 0.04));
+  border: 1px solid rgb(255 255 255 / 0.22);
+  backdrop-filter: blur(14px) saturate(1.4);
+}
+.scene-glass:hover {
+  background: linear-gradient(180deg, rgb(255 255 255 / 0.22), rgb(255 255 255 / 0.08));
+  border-color: rgb(255 255 255 / 0.4);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    transition-duration: 0.01ms !important;
+  }
+}
+
+/* Mission scene: dusk → dawn over Los Angeles. Two stacked skies crossfade (opacity only,
+   so the change stays on the compositor). */
+.mission-sky-dusk {
+  background:
+    radial-gradient(60% 45% at 70% 92%, rgb(190 92 58 / 0.45), transparent 70%),
+    linear-gradient(180deg, #040b14 0%, #0a1a2a 38%, #173a46 70%, #3c4a4e 100%);
+}
+.mission-sky-dawn {
+  background:
+    radial-gradient(55% 50% at 66% 88%, rgb(255 214 140 / 0.75), transparent 70%),
+    linear-gradient(180deg, #0c3d44 0%, #1f6e6a 34%, #9fb79a 66%, #f1cf8c 100%);
+}
+.mission-sun {
+  background: radial-gradient(closest-side, #fff4d6 0%, #f6d58c 38%, rgb(230 184 95 / 0.35) 62%, transparent 100%);
+}
+.mission-stars {
+  background-image:
+    radial-gradient(1.2px 1.2px at 12% 18%, #fff 50%, transparent 51%),
+    radial-gradient(1px 1px at 28% 8%, #fff 50%, transparent 51%),
+    radial-gradient(1.4px 1.4px at 46% 22%, #fff 50%, transparent 51%),
+    radial-gradient(1px 1px at 61% 12%, #fff 50%, transparent 51%),
+    radial-gradient(1.2px 1.2px at 77% 26%, #fff 50%, transparent 51%),
+    radial-gradient(1px 1px at 88% 9%, #fff 50%, transparent 51%),
+    radial-gradient(1px 1px at 6% 34%, #fff 50%, transparent 51%),
+    radial-gradient(1.3px 1.3px at 36% 38%, #fff 50%, transparent 51%),
+    radial-gradient(1px 1px at 94% 40%, #fff 50%, transparent 51%);
+}
+/* Seamless tiles; the element is one tile wider than the screen and slides by ≤ 1 tile. */
+.mission-tile {
+  background-repeat: repeat-x;
+  background-size: auto 100%;
+  background-position: left bottom;
+}
+.mission-road {
+  background:
+    linear-gradient(180deg, #1b2422 0%, #121a19 30%, #0d1312 62%, #2a3331 62.5%, #39423f 70%, #1a201f 100%);
+}
+.mission-dashes {
+  background-image: repeating-linear-gradient(90deg, rgb(230 184 95 / 0.85) 0 70px, transparent 70px 160px);
+}
+.mission-kerb {
+  background-image: repeating-linear-gradient(90deg, rgb(255 255 255 / 0.10) 0 2px, transparent 2px 120px);
+}
+.mission-copy :is(h2, h3, p) {
+  text-shadow: 0 2px 24px rgb(0 0 0 / 0.45);
+}
+.mission-outline {
+  color: transparent;
+  -webkit-text-stroke: 1.5px rgb(255 255 255 / 0.22);
+}
+
+/* Loading screen: the route's unlit dashes and a slow ping around the marker. */
+.loader-dashes {
+  background-image: repeating-linear-gradient(90deg, rgb(255 255 255 / 0.7) 0 18px, transparent 18px 34px);
+}
+.loader-ping {
+  animation: loader-ping 1.8s cubic-bezier(0.2, 0.7, 0.3, 1) infinite;
+}
+@keyframes loader-ping {
+  from { transform: scale(1); opacity: 0.9; }
+  to { transform: scale(3.4); opacity: 0; }
+}
+/* The loader van's headlamp: a soft cone of warm light along the road ahead. */
+.loader-beam {
+  background: linear-gradient(90deg, rgb(255 238 200 / 0.45), rgb(246 213 140 / 0.12) 55%, transparent);
+  clip-path: polygon(0 38%, 100% 0, 100% 100%, 0 62%);
+}
+
+/* Thin, dark scrollbar in the site's ink and teal (Firefox, Chrome, Edge; Safari via
+   the -webkit- rules, which browsers supporting scrollbar-color ignore). */
+html {
+  color-scheme: dark;
+  scrollbar-width: thin;
+  scrollbar-color: #24403d #050c0c;
+}
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+::-webkit-scrollbar-track {
+  background: #050c0c;
+}
+::-webkit-scrollbar-thumb {
+  background: #24403d;
+  border: 2px solid #050c0c;
+  border-radius: 999px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #0f766e;
 }
