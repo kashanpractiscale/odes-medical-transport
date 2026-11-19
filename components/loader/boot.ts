@@ -23,7 +23,9 @@ let revealed = false;
 
 export const boot = {
   mark(step: BootStep) {
+    if (done.has(step)) return;
     done.add(step);
+    performance.mark(`boot:${step}`); // visible in DevTools > Performance > Timings
   },
   /** 0‥1, the share of weighted milestones reached. */
   progress() {
@@ -38,6 +40,7 @@ export const boot = {
   reveal() {
     if (revealed) return;
     revealed = true;
+    performance.mark("boot:reveal");
     waiting.forEach((f) => f());
     waiting.clear();
   },

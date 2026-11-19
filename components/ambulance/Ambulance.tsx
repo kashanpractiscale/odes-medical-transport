@@ -15,7 +15,9 @@ import { smoothstep } from "./surface";
 
 export const debugStats = { vertices: 0, buildMs: 0 };
 
-const LOGO_URL = "/brand/odes-logo.png";
+// 1024 px WebP of the official logo (75 KB vs the 205 KB 1789 px PNG): the livery draws it
+// at most ~750 px wide even on the 3072 px desktop atlas.
+const LOGO_URL = "/brand/odes-logo-livery.webp";
 
 function useMaterials(assets: AmbulanceAssets) {
   return useMemo(() => {
@@ -247,11 +249,11 @@ export function Ambulance() {
 
   const shadowGeo = useMemo(() => new THREE.PlaneGeometry(assets.shadow.size[0], assets.shadow.size[1]).rotateX(-Math.PI / 2), [assets]);
 
-  // Model is built (this component only mounts once its textures have loaded). If the
-  // hero is off-screen no frame renders, so count the first frame after a short wait too.
+  // Model is built (this component only mounts once its textures have loaded). The stage
+  // marks the first frame; this is only a safety net if that frame never comes.
   useEffect(() => {
     boot.mark("model");
-    const id = window.setTimeout(() => boot.mark("frame"), 900);
+    const id = window.setTimeout(() => boot.mark("frame"), 3000);
     return () => window.clearTimeout(id);
   }, []);
 

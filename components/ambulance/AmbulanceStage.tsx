@@ -182,6 +182,34 @@ function CameraRig() {
   return null;
 }
 
+/**
+ * Compiles every material's shader program before the first frame. With
+ * KHR_parallel_shader_compile the driver compiles in the background, so the main thread
+ * (and the loading screen) keeps running instead of freezing for the first render; without
+ * the extension it behaves like a normal synchronous compile. Mounted last inside the
+ * Suspense boundary, so the whole scene exists when it runs.
+ */
+function Warmup({ onDone }: { onDone: (done: true) => void }) {
+  const gl = useThree((s) => s.gl);
+  const scene = useThree((s) => s.scene);
+  const camera = useThree((s) => s.camera);
+  useEffect(() => {
+    let alive = true;
+    const t0 = performance.now();
+    gl.compileAsync(scene, camera)
+      .catch(() => {}) // a failed warm-up only means the first frame compiles instead
+      .finally(() => {
+        if (!alive) return;
+        performance.measure("boot:compile", { start: t0, end: performance.now() });
+        onDone(true);
+      });
+    return () => {
+      alive = false;
+    };
+  }, [gl, scene, camera, onDone]);
+  return null;
+}
+
 function Invalidator() {
   const invalidate = useThree((s) => s.invalidate);
   useEffect(() => {
@@ -241,12 +269,34 @@ export default function AmbulanceStage({
   const [maxDpr] = useState(() => Math.min(2, typeof window === "undefined" ? 1 : window.devicePixelRatio || 1));
   const [dpr, setDpr] = useState(maxDpr);
   const statsRef = useRef<HTMLPreElement>(null);
+  // Shaders compiled (off the main thread) yet? And has the loading screen opened?
+  const [warm, setWarm] = useState(false);
+  // Mount the van one task after the canvas: splits one long blocking commit (renderer +
+  // studio, then the ~300 ms van build) in two, so the loading screen keeps animating.
+  const [vanMounted, setVanMounted] = useState(false);
+  const [revealed, setRevealed] = useState(() => boot.revealed);
+  useEffect(() => boot.onReveal(() => setRevealed(true)), []);
+  // after warm-up, draw one frame (the van is ready behind the loader); if the hero is
+  // off-screen (a reload part-way down the page) no frame will draw, so count it as ready
+  useEffect(() => {
+    if (warm && !active) boot.mark("frame");
+  }, [warm, active]);
+  useEffect(() => {
+    if (!warm) return;
+    const id = requestAnimationFrame(() => rig.invalidate());
+    return () => cancelAnimationFrame(id);
+  }, [warm]);
+
+  // Nothing renders until the shaders are compiled; behind the loading screen it renders
+  // only on demand (one frame for the milestone), so the hidden scene never competes with
+  // the loader for the GPU; then the normal loop takes over.
+  const frameloop = !active || !warm ? "never" : reducedMotion || !revealed ? "demand" : "always";
 
   return (
     <>
       <Canvas
         className="!absolute inset-0"
-        frameloop={active ? (reducedMotion ? "demand" : "always") : "never"}
+        frameloop={frameloop}
         dpr={dpr}
         eventSource={eventSource as React.RefObject<HTMLElement> | undefined}
         eventPrefix="client"
@@ -254,6 +304,9 @@ export default function AmbulanceStage({
         gl={{ antialias: true, alpha: true, powerPreference: "high-performance" }}
         onCreated={({ gl }) => {
           gl.toneMapping = THREE.NeutralToneMapping; // keeps white paint and brand colours true
+          // Shader error checks query the GPU process synchronously for every program on its
+          // first use; useful while developing, pure stall in production.
+          gl.debug.checkShaderErrors = process.env.NODE_ENV !== "production";
           gl.toneMappingExposure = 1.0;
           gl.domElement.setAttribute("role", "img");
           gl.domElement.setAttribute(
@@ -261,6 +314,7 @@ export default function AmbulanceStage({
             "Interactive 3D model of the Odes Medical Transportation high-roof ambulance van in white with teal and gold livery.",
           );
           boot.mark("stage");
+          window.setTimeout(() => setVanMounted(true), 0);
           onReady?.();
         }}
       >
@@ -271,7 +325,12 @@ export default function AmbulanceStage({
           <Studio />
           <Floor />
           <SceneWords words={words} />
-          <Ambulance />
+          {vanMounted && (
+            <>
+              <Ambulance />
+              <Warmup onDone={setWarm} />
+            </>
+          )}
         </Suspense>
         {debug && <Stats out={statsRef} />}
       </Canvas>

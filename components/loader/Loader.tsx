@@ -7,7 +7,11 @@ import { useReducedMotion } from "@/components/hero/useReducedMotion";
 import { COMPANY } from "@/lib/site";
 import { boot, MILESTONES } from "./boot";
 
-const MIN_SHOW = 1.4; // s: long enough to read as intentional, never a flash
+// Start downloading the 3D engine (~290 KB gzipped, the longest wait) the moment this
+// script runs, rather than when React reaches the hero; next/dynamic reuses the request.
+if (typeof window !== "undefined") void import("@/components/ambulance/AmbulanceStage");
+
+const MIN_SHOW = 1.2; // s: long enough to read as intentional, never a flash
 const GIVE_UP = 9; // s: open anyway (slow network, no WebGL) — the page works without the van
 
 const STATUS = [
@@ -190,7 +194,8 @@ export function Loader() {
       // time-based (deltaRatio = frames' worth of time at 60 fps), so a slow device that
       // only manages a few fps still sees the same pace; only ever moves forward
       const k = gsap.ticker.deltaRatio(60);
-      shown += Math.max(0, target - shown) * (1 - Math.pow(1 - 0.09, k));
+      const rate = target >= 1 ? 0.2 : 0.09; // finish briskly once everything is ready
+      shown += Math.max(0, target - shown) * (1 - Math.pow(1 - rate, k));
       if (shown < ceiling && target < 1) shown += 0.0009 * k;
       shown = Math.min(shown, ceiling);
       const p = target >= 1 && shown > 0.995 ? 1 : shown;
@@ -216,17 +221,17 @@ export function Loader() {
       }
       const tl = gsap.timeline({ onComplete: finish });
       // the van pulls away off the right edge…
-      tl.to(van, { x: W + 80, duration: 0.6, ease: "power2.in" })
-        .to(wheels, { rotation: "+=720", duration: 0.6, ease: "power2.in" }, "<")
-        .to(fill, { scaleX: 1, duration: 0.45, ease: "power2.inOut" }, "<")
-        .to(q("[data-out]"), { autoAlpha: 0, y: (i) => (i % 2 ? 22 : -22), duration: 0.4, ease: "power2.in", stagger: 0.03 }, "<0.1")
-        .to(q("[data-dashes], [data-tick]"), { opacity: 0, duration: 0.3 }, "<")
+      tl.to(van, { x: W + 80, duration: 0.5, ease: "power2.in" })
+        .to(wheels, { rotation: "+=600", duration: 0.5, ease: "power2.in" }, "<")
+        .to(fill, { scaleX: 1, duration: 0.35, ease: "power2.inOut" }, "<")
+        .to(q("[data-out]"), { autoAlpha: 0, y: (i) => (i % 2 ? 18 : -18), duration: 0.3, ease: "power2.in", stagger: 0.02 }, "<")
+        .to(q("[data-dashes], [data-tick]"), { opacity: 0, duration: 0.25 }, "<")
         // …the road flares, and the screen parts along it while the 3D van drives in
-        .to(fill, { scaleY: 3, duration: 0.22, ease: "power2.out" })
+        .to(fill, { scaleY: 3, duration: 0.18, ease: "power2.out" }, "-=0.2")
         .add(() => boot.reveal())
-        .to(q("[data-panel='top']"), { yPercent: -100, duration: 1.1, ease: "power4.inOut" }, "+=0.04")
-        .to(q("[data-panel='bottom']"), { yPercent: 100, duration: 1.1, ease: "power4.inOut" }, "<")
-        .to(fill, { opacity: 0, duration: 0.4 }, "<0.2");
+        .to(q("[data-panel='top']"), { yPercent: -100, duration: 0.95, ease: "power4.inOut" })
+        .to(q("[data-panel='bottom']"), { yPercent: 100, duration: 0.95, ease: "power4.inOut" }, "<")
+        .to(fill, { opacity: 0, duration: 0.35 }, "<0.15");
     }
 
     return () => {
@@ -288,8 +293,12 @@ export function Loader() {
           ))}
           {/* the van rides on the line; its beam lights the road ahead */}
           <div data-van className="absolute bottom-0 left-0 w-[clamp(84px,9vw,136px)] will-change-transform">
-            <div className="loader-beam absolute bottom-[14%] left-[97%] h-[42%] w-[clamp(80px,12vw,180px)]" />
-            <Van />
+            {/* CSS (compositor) idle: engine shimmy and beam flicker keep moving even while
+                the main thread is busy parsing three.js or building the van */}
+            <div className="loader-idle">
+              <div className="loader-beam absolute bottom-[14%] left-[97%] h-[42%] w-[clamp(80px,12vw,180px)]" />
+              <Van />
+            </div>
           </div>
         </div>
         <div data-out className="mt-5 flex justify-between">

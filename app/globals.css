@@ -217,3 +217,21 @@ html {
 ::-webkit-scrollbar-thumb:hover {
   background: #0f766e;
 }
+/* Loader van idle: transform/opacity keyframes run on the compositor, independent of JS. */
+.loader-idle {
+  animation: loader-idle 0.36s ease-in-out infinite alternate;
+}
+.loader-idle .loader-beam {
+  animation: loader-beam 2.4s ease-in-out infinite;
+}
+@keyframes loader-idle {
+  from { transform: translateY(0); }
+  to { transform: translateY(-1.5px); }
+}
+@keyframes loader-beam {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.72; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .loader-idle, .loader-idle .loader-beam { animation: none; }
+}
