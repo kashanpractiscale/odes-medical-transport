@@ -257,21 +257,15 @@ export function Ambulance() {
     return () => window.clearTimeout(id);
   }, []);
 
-  // Drive-in once the loading screen opens (skipped with reduced motion).
+  // Drive-in: waits off-screen and starts once the first frame has actually been drawn
+  // (shaders compiled, textures uploaded), so the heavy first render can never eat into
+  // it and the van always enters smoothly from the left. Skipped with reduced motion.
+  const driveIn = useRef<gsap.core.Tween | null>(null);
   useEffect(() => {
-    if (rig.reducedMotion) {
-      rig.intro = 1;
-      rig.invalidate();
-      return;
-    }
-    rig.intro = 0;
-    let tw: gsap.core.Tween | undefined;
-    const off = boot.onReveal(() => {
-      tw = gsap.fromTo(rig, { intro: 0 }, { intro: 1, duration: 3.1, ease: "none", delay: 0.15 });
-    });
+    rig.intro = rig.reducedMotion ? 1 : 0;
+    rig.invalidate();
     return () => {
-      off();
-      tw?.kill();
+      driveIn.current?.kill();
       rig.intro = 1;
     };
   }, []);
@@ -313,7 +307,12 @@ export function Ambulance() {
   useFrame((state) => {
     if (firstFrame.current) {
       firstFrame.current = false;
-      requestAnimationFrame(() => boot.mark("frame")); // after this frame has been drawn
+      requestAnimationFrame(() => {
+        // this frame has been drawn
+        boot.mark("frame");
+        if (!rig.reducedMotion)
+          driveIn.current = gsap.fromTo(rig, { intro: 0 }, { intro: 1, duration: 3.1, ease: "none", delay: 0.12 });
+      });
     }
     const t = state.clock.elapsedTime;
     rig.clock = t;

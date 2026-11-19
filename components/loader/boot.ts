@@ -11,12 +11,6 @@ const WEIGHTS = {
 } as const;
 export type BootStep = keyof typeof WEIGHTS;
 
-/** Cumulative progress after each milestone (0.15, 0.5, 0.8, 1): the loader's route ticks. */
-export const MILESTONES = Object.values(WEIGHTS).reduce<number[]>(
-  (acc, w) => [...acc, Math.round(((acc.at(-1) ?? 0) + w) * 100) / 100],
-  [],
-);
-
 const done = new Set<BootStep>();
 const waiting = new Set<() => void>();
 let revealed = false;

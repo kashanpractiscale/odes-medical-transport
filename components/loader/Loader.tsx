@@ -4,16 +4,12 @@ import Image from "next/image";
 import { useEffect, useRef, useState } from "react";
 import { useReducedMotion } from "@/components/hero/useReducedMotion";
 import { COMPANY } from "@/lib/site";
-import { boot, MILESTONES } from "./boot";
+import { boot } from "./boot";
 
-// Start downloading the 3D engine (~290 KB gzipped, the longest wait) the moment this
-// script runs, rather than when React reaches the hero; next/dynamic reuses the request.
-if (typeof window !== "undefined") void import("@/components/ambulance/AmbulanceStage");
-
-const MIN_SHOW = 1200; // ms: long enough to read as intentional, never a flash
-const GIVE_UP = 9000; // ms: open anyway (slow network, no WebGL) — the page works without the van
-const TICK = 50; // ms: bookkeeping cadence (milestones, text); motion itself is on the compositor
-const SAMPLES = 60; // keyframes per glide
+const DRIVE_MS = 1700; // the whole route, start to finish
+const FONT_WAIT_MS = 2500; // longest we hold at 100 % for the display fonts
+const SAMPLES = 90; // keyframes per track (linear between them, so ~19 ms apart)
+const STOPS = [0.25, 0.5, 0.75]; // route stops that light up as the van passes
 
 const STATUS = [
   [0, "Preparing your ride"],
@@ -21,13 +17,12 @@ const STATUS = [
   [0.65, "Checking everything’s ready"],
   [0.97, "Ready when you are"],
 ] as const;
-const statusFor = (p: number) => STATUS.reduce<string>((m, [at, text]) => (p >= at ? text : m), STATUS[0][1]);
 
 /*
  * Side-on van, drawn to the 3D model's Transit EL High Roof figures (18 units per metre,
  * ground at y = 52): 6.70 m long, 2.80 m tall, axles 1.96 m and 5.71 m from the rear,
  * 0.356 m tyres, roof cap at 4.40 m, windshield 5.13–5.91 m, hood edge 6.55 m.
- * The wheels are separate HTML elements (below) so they can spin on the compositor.
+ * The wheels are separate HTML elements so they can turn on the compositor.
  */
 const VAN_W = 122;
 const VAN_H = 54;
@@ -69,7 +64,7 @@ function Van() {
         <div
           key={cx}
           data-wheel
-          className="loader-wheel absolute aspect-square"
+          className="absolute aspect-square will-change-transform"
           style={{
             left: `${((cx - WHEEL_R) / VAN_W) * 100}%`,
             top: `${((WHEEL_Y - WHEEL_R) / VAN_H) * 100}%`,
@@ -92,8 +87,8 @@ function Van() {
 /** One odometer drum: digits 0–9 and a trailing 0 so the wrap rolls instead of jumping. */
 function Drum({ dim }: { dim?: boolean }) {
   return (
-    <span className="relative block h-[1.1em] overflow-hidden">
-      <span data-drum data-dim={dim ? "" : undefined} className="block will-change-transform data-dim:text-white/15">
+    <span data-drum-wrap className={`relative block h-[1.1em] overflow-hidden ${dim ? "opacity-15" : ""}`}>
+      <span data-drum className="block will-change-transform">
         {[0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 0].map((d, i) => (
           <span key={i} className="block h-[1.1em] leading-[1.1em]">
             {d}
@@ -105,19 +100,24 @@ function Drum({ dim }: { dim?: boolean }) {
 }
 
 // ---------------------------------------------------------------------------
-// Pure motion maths (shared by the keyframe builder and the bookkeeping loop)
+// Pure motion maths: one easing curve drives every track, so they stay in sync.
 
-const easeOut = (t: number) => 1 - Math.pow(1 - t, 3);
+/** Smooth start and finish (quintic-ish smootherstep), no stop-and-go. */
+const ease = (t: number) => t * t * t * (t * (t * 6 - 15) + 10);
+/** Time (0‥1) at which the eased progress reaches p (monotonic, so bisect). */
+function timeOf(p: number) {
+  let lo = 0;
+  let hi = 1;
+  for (let i = 0; i < 30; i++) {
+    const mid = (lo + hi) / 2;
+    if (ease(mid) < p) lo = mid;
+    else hi = mid;
+  }
+  return (lo + hi) / 2;
+}
 
-/** A glide of the displayed progress from v0 to v1 (0‥1), started at t0 (ms). */
-type Glide = { v0: number; v1: number; t0: number; dur: number };
-const valueAt = (g: Glide, now: number) => {
-  const k = g.dur <= 0 ? 1 : Math.min(1, Math.max(0, (now - g.t0) / g.dur));
-  return g.v0 + (g.v1 - g.v0) * easeOut(k);
-};
-
-/** Drum positions (in digit cells) for a percentage: units roll continuously; tens and
- *  hundreds turn only while the drum below rolls over from 9, as on a real odometer. */
+/** Drum positions (digit cells) for a percentage: units roll continuously; tens and
+ *  hundreds turn only while the drum below rolls over from 9, like a real odometer. */
 function drumPositions(pct: number): [number, number, number] {
   if (pct >= 100) return [1, 0, 0];
   const u = pct % 10;
@@ -127,27 +127,46 @@ function drumPositions(pct: number): [number, number, number] {
 }
 const drumY = (cells: number) => `translateY(${(-cells * 100) / 11}%)`;
 
+/** Opacity keyframes: hidden, fade in at time a, fade out at time b (0‥1). */
+function windowFrames(a: number, b: number, fade = 0.035): Keyframe[] {
+  const f: Keyframe[] = [];
+  const push = (offset: number, opacity: number) => f.push({ offset: Math.min(1, Math.max(0, offset)), opacity });
+  push(0, a <= 0 ? 1 : 0);
+  if (a > 0) {
+    push(a, 0);
+    push(a + fade, 1);
+  }
+  if (b < 1) {
+    push(b - fade, 1);
+    push(b, 0);
+  }
+  push(1, b < 1 ? 0 : 1);
+  return f;
+}
+/** A one-way step (e.g. 0.15 → 1 opacity) at time t. */
+const stepFrames = (t: number, from: number, to: number, fade = 0.03): Keyframe[] => [
+  { offset: 0, opacity: from },
+  { offset: Math.max(0, t - fade), opacity: from },
+  { offset: Math.min(1, t), opacity: to },
+  { offset: 1, opacity: to },
+];
+
 /**
- * Loading screen in the hero's studio light. A small side-on Odes van drives a route from
- * "Pickup" to "Your appointment" along the screen's centre line, passing a tick for each
- * real boot milestone (fonts, 3D engine, van model, first frame), while an odometer rolls
- * the percentage. When everything is ready the van drives off, the road flares and the
- * screen parts along it, top half up, bottom half down, as the 3D van drives in.
+ * Loading screen in the hero's studio light: a small side-on Odes van drives the route
+ * from "Pickup" to "Your appointment" while an odometer rolls to 100 %, then drives off;
+ * the road flares and the screen parts along it.
  *
- * Smoothness: the page's main thread is blocked several times while three.js parses and
- * the van is built, so nothing here is animated frame-by-frame from JavaScript. Each time
- * a milestone lands, the loader hands the compositor a complete glide (Web Animations
- * keyframes for the van, the gold line and every odometer drum; CSS for the wheels), and
- * the motion carries on through any freeze. JavaScript only does bookkeeping every 50 ms.
+ * Built to be perfectly smooth: the whole sequence is planned once, up front, as Web
+ * Animations keyframes from one easing curve (van, gold line, wheels, odometer drums and
+ * their dimming, route stops, status text), so it runs entirely on the compositor with no
+ * JavaScript per frame. Nothing heavy happens underneath it either: the 3D scene does not
+ * start loading until this has opened (see HeroStory), so the GPU is never shared with
+ * shader compiles or texture uploads while it plays.
  */
 export function Loader() {
   const root = useRef<HTMLDivElement>(null);
   const reduced = useReducedMotion();
   const [gone, setGone] = useState(false);
-
-  useEffect(() => {
-    document.fonts?.ready.then(() => boot.mark("fonts"));
-  }, []);
 
   useEffect(() => {
     const el = root.current;
@@ -161,71 +180,61 @@ export function Loader() {
     const $$ = (s: string) => [...el.querySelectorAll<HTMLElement>(s)];
     const html = document.documentElement;
     html.style.overflow = "hidden";
+    const anims: Animation[] = [];
+    const timers: number[] = [];
+    let cancelled = false;
 
     const track = $("[data-track]");
-    const bar = $("[data-bar]");
-    const fill = $("[data-fill]");
     const van = $("[data-van]");
+    const fill = $("[data-fill]");
+    const bar = $("[data-bar]");
     const drums = $$("[data-drum]");
-    const ticks = $$("[data-tick]");
-    const status = $("[data-status]");
-    const wheelSpin = $$("[data-wheel]").flatMap((w) => w.getAnimations());
-
-    let W = 1;
-    let vanW = 1;
-    const measure = () => {
-      W = track.offsetWidth;
-      vanW = van.offsetWidth;
-    };
-    measure();
-
-    const start = performance.now();
-    let glide: Glide = { v0: 0, v1: 0, t0: start, dur: 0 };
-    let running: Animation[] = [];
-    let wheelStop = 0;
-    let lastInt = -1;
-    let leaving = false;
-
-    /** Where the glide actually is on screen: the running animation's own clock, which
-     *  starts a frame or more late on a busy page, rather than wall time. */
-    const shownNow = () => {
-      const a = running[0];
-      if (!a || glide.dur <= 0) return valueAt(glide, performance.now());
-      const k = Math.min(1, Math.max(0, Number(a.currentTime ?? 0) / glide.dur));
-      return glide.v0 + (glide.v1 - glide.v0) * easeOut(k);
-    };
-
+    const drumWraps = $$("[data-drum-wrap]");
+    const W = track.offsetWidth;
+    const vanW = van.offsetWidth;
+    const wheelPx = (vanW * WHEEL_R) / VAN_W;
     const xAt = (p: number) => p * (W - vanW);
-    const fillAt = (p: number) => (xAt(p) + vanW * 0.55) / W;
 
-    /** Static placement (reduced motion, and the resting state between glides). */
-    const place = (p: number) => {
-      van.style.transform = `translateX(${xAt(p)}px)`;
-      fill.style.transform = `scaleX(${fillAt(p)})`;
-      drumPositions(p * 100).forEach((c, i) => (drums[i].style.transform = drumY(c)));
+    const fontsReady = Promise.race([
+      document.fonts?.ready ?? Promise.resolve(),
+      new Promise((r) => setTimeout(r, FONT_WAIT_MS)),
+    ]).then(() => boot.mark("fonts"));
+
+    const run = (target: Element, frames: Keyframe[], o: KeyframeAnimationOptions) => {
+      const a = target.animate(frames, { fill: "forwards", ...o });
+      anims.push(a);
+      return a;
     };
 
-    /** Hand the compositor a full glide from the current value to `to`. */
-    const glideTo = (to: number, now: number) => {
-      const from = shownNow();
-      const dur = reduced ? 0 : to >= 1 ? 350 : Math.min(3200, Math.max(900, 900 + (to - from) * 6000));
-      glide = { v0: from, v1: to, t0: now, dur };
-      place(to); // the resting state once the glide has played out
-      if (reduced) return;
-
+    let driven: Promise<unknown>;
+    if (reduced) {
+      // no travel: show the finished state
+      van.style.transform = `translateX(${xAt(1)}px)`;
+      fill.style.transform = "scaleX(1)";
+      drumPositions(100).forEach((c, i) => (drums[i].style.transform = drumY(c)));
+      drumWraps.forEach((w) => (w.style.opacity = "1"));
+      $$("[data-stop-on]").forEach((s) => (s.style.opacity = "1"));
+      $$("[data-status-line]").forEach((s, i) => (s.style.opacity = i === STATUS.length - 1 ? "1" : "0"));
+      bar.setAttribute("aria-valuenow", "100");
+      driven = Promise.resolve();
+    } else {
+      // -- one plan, sampled from one curve -----------------------------------------
       const vanK: Keyframe[] = [];
       const fillK: Keyframe[] = [];
+      const wheelK: Keyframe[] = [];
       const drumK: Keyframe[][] = [[], [], []];
       let prev: number[] | null = null;
       for (let i = 0; i <= SAMPLES; i++) {
         const k = i / SAMPLES;
-        const p = from + (to - from) * easeOut(k);
-        vanK.push({ offset: k, transform: `translateX(${xAt(p)}px)` });
-        fillK.push({ offset: k, transform: `scaleX(${fillAt(p)})` });
+        const p = ease(k);
+        const x = xAt(p);
+        vanK.push({ offset: k, transform: `translateX(${x}px)` });
+        fillK.push({ offset: k, transform: `scaleX(${(x + vanW * 0.55) / W})` });
+        wheelK.push({ offset: k, transform: `rotate(${(x / wheelPx) * (180 / Math.PI)}deg)` });
         const cells = drumPositions(p * 100);
         cells.forEach((c, j) => {
           if (prev && c < prev[j] - 0.5) {
-            // 9 → 0: roll on to the trailing "0" cell, then snap to the identical first cell
+            // 9 → 0: roll on to the trailing "0" cell, then snap to the identical first one
             const mid = (k + (i - 1) / SAMPLES) / 2;
             drumK[j].push({ offset: mid, transform: drumY(10) }, { offset: mid, transform: drumY(0) });
           }
@@ -233,103 +242,80 @@ export function Loader() {
         });
         prev = cells;
       }
-      const opts: KeyframeAnimationOptions = { duration: dur, easing: "linear", fill: "forwards" };
-      const next = [
-        van.animate(vanK, opts),
-        fill.animate(fillK, opts),
-        ...drums.map((d, j) => d.animate(drumK[j], opts)),
-      ];
-      running.forEach((a) => a.cancel());
-      running = next;
+      const o = { duration: DRIVE_MS, easing: "linear" };
+      performance.mark("boot:intro"); // the loader's drive starts here (DevTools > Timings)
+      driven = run(van, vanK, o).finished;
+      run(fill, fillK, o);
+      $$("[data-wheel]").forEach((w) => run(w, wheelK, o));
+      drums.forEach((d, j) => run(d, drumK[j], o));
+      // leading zeros brighten as they come into use; stops light as the van passes them
+      run(drumWraps[1], stepFrames(timeOf(0.1), 0.15, 1), o);
+      run(drumWraps[0], stepFrames(0.999, 0.15, 1, 0.02), o);
+      $$("[data-stop-on]").forEach((s) => run(s, stepFrames(timeOf(Number(s.dataset.at)), 0, 1, 0.04), o));
+      $$("[data-status-line]").forEach((s, i) => {
+        const a = timeOf(STATUS[i][0]);
+        const b = i < STATUS.length - 1 ? timeOf(STATUS[i + 1][0]) : 1;
+        run(s, windowFrames(a, b), o);
+      });
+      // screen readers: a few coarse updates are plenty
+      [25, 50, 75, 100].forEach((n) =>
+        timers.push(window.setTimeout(() => bar.setAttribute("aria-valuenow", String(n)), timeOf(n / 100) * DRIVE_MS)),
+      );
+    }
 
-      // wheels turn while the van is moving
-      wheelSpin.forEach((a) => a.play());
-      window.clearTimeout(wheelStop);
-      wheelStop = window.setTimeout(() => wheelSpin.forEach((a) => a.pause()), dur * 0.8);
-    };
-
-    const onResize = () => {
-      measure();
-      glideTo(glide.v1, performance.now());
-    };
-    window.addEventListener("resize", onResize);
-
-    // Bookkeeping: new milestones retarget the glide; text, ticks and ARIA follow.
-    const loop = window.setInterval(() => {
-      const now = performance.now();
-      if (now - start > GIVE_UP) (["fonts", "stage", "model", "frame"] as const).forEach((s) => boot.mark(s));
-      const target = boot.progress();
-      // aim a little past what has loaded so a slow download still creeps forward,
-      // but never to 100 % before everything is actually ready
-      const goal = target < 1 ? Math.min(target + 0.12, 0.99) : 1;
-      if (goal > glide.v1 + 1e-4) glideTo(goal, now);
-
-      const p = shownNow();
-      const n = Math.round(p * 100);
-      if (n !== lastInt) {
-        lastInt = n;
-        bar.setAttribute("aria-valuenow", String(n));
-        drums[0].toggleAttribute("data-dim", n < 100);
-        drums[1].toggleAttribute("data-dim", n < 10);
-        ticks.forEach((t) => t.toggleAttribute("data-on", p >= Number(t.dataset.at) - 0.002));
-        const s = statusFor(p);
-        if (status.textContent !== s) status.textContent = s;
-      }
-      // leave only once the final glide has really finished on screen
-      const arrived = glide.v1 >= 1 && (reduced || running[0]?.playState === "finished");
-      if (arrived && now - start >= MIN_SHOW && !leaving) {
-        leaving = true;
-        leave();
-      }
-    }, TICK);
+    // open when the drive has finished and the display fonts are in
+    Promise.all([driven, fontsReady]).then(() => {
+      if (!cancelled) leave();
+    });
 
     const finish = () => {
       html.style.overflow = "";
       setGone(true);
     };
 
-    /** Exit, also entirely on the compositor so the hero starting up cannot stutter it. */
+    /** Exit, also on the compositor. */
     function leave() {
-      window.clearInterval(loop);
-      window.clearTimeout(wheelStop);
       if (reduced) {
         boot.reveal();
-        el!.animate([{ opacity: 1 }, { opacity: 0 }], { duration: 350, easing: "ease-out", fill: "forwards" }).finished.then(finish);
+        run(el!, [{ opacity: 1 }, { opacity: 0 }], { duration: 350, easing: "ease-out" }).finished.then(finish);
         return;
       }
-      const f = (o: KeyframeAnimationOptions) => ({ fill: "forwards" as const, ...o });
       const IN = "cubic-bezier(0.55, 0.085, 0.68, 0.53)";
       const IN_OUT = "cubic-bezier(0.77, 0, 0.175, 1)";
       const x0 = xAt(1);
-      // the van pulls away off the right edge, wheels spinning up…
-      van.animate([{ transform: `translateX(${x0}px)` }, { transform: `translateX(${W + 80}px)` }], f({ duration: 500, easing: IN }));
-      wheelSpin.forEach((a) => {
-        a.playbackRate = 2.5;
-        a.play();
+      const off = W + 80;
+      // the van pulls away off the right edge, wheels turning with it…
+      run(van, [{ transform: `translateX(${x0}px)` }, { transform: `translateX(${off}px)` }], { duration: 500, easing: IN });
+      $$("[data-wheel]").forEach((w) => {
+        const r0 = (x0 / wheelPx) * (180 / Math.PI);
+        const r1 = (off / wheelPx) * (180 / Math.PI);
+        run(w, [{ transform: `rotate(${r0}deg)` }, { transform: `rotate(${r1}deg)` }], { duration: 500, easing: IN });
       });
       $$("[data-out]").forEach((o, i) =>
-        o.animate(
-          [{ opacity: 1, transform: "none" }, { opacity: 0, transform: `translateY(${i % 2 ? 18 : -18}px)` }],
-          f({ duration: 300, delay: i * 20, easing: IN }),
-        ),
+        run(o, [{ opacity: 1, transform: "none" }, { opacity: 0, transform: `translateY(${i % 2 ? 18 : -18}px)` }], {
+          duration: 300,
+          delay: i * 20,
+          easing: IN,
+        }),
       );
-      $$("[data-dashes], [data-tick]").forEach((o) => o.animate([{ opacity: 1 }, { opacity: 0 }], f({ duration: 250 })));
-      // …the road flares, and the screen parts along it while the 3D van drives in
-      fill.animate([{ transform: "scaleX(1) scaleY(1)" }, { transform: "scaleX(1) scaleY(3)" }], f({ duration: 180, delay: 300, easing: "ease-out" }));
-      fill.animate([{ opacity: 1 }, { opacity: 0 }], f({ duration: 350, delay: 630 }));
+      $$("[data-dashes], [data-stop]").forEach((o) => run(o, [{ opacity: 1 }, { opacity: 0 }], { duration: 250 }));
+      // …the road flares, and the screen parts along it
+      run(fill, [{ transform: "scaleX(1) scaleY(1)" }, { transform: "scaleX(1) scaleY(3)" }], { duration: 180, delay: 300, easing: "ease-out" });
+      run(fill, [{ opacity: 1 }, { opacity: 0 }], { duration: 350, delay: 630 });
       const OPEN_AT = 480;
-      window.setTimeout(() => boot.reveal(), OPEN_AT);
-      $("[data-panel='top']").animate([{ transform: "none" }, { transform: "translateY(-100%)" }], f({ duration: 950, delay: OPEN_AT, easing: IN_OUT }));
-      $("[data-panel='bottom']")
-        .animate([{ transform: "none" }, { transform: "translateY(100%)" }], f({ duration: 950, delay: OPEN_AT, easing: IN_OUT }))
-        .finished.then(finish);
+      timers.push(window.setTimeout(() => boot.reveal(), OPEN_AT));
+      run($("[data-panel='top']"), [{ transform: "none" }, { transform: "translateY(-100%)" }], { duration: 950, delay: OPEN_AT, easing: IN_OUT });
+      run($("[data-panel='bottom']"), [{ transform: "none" }, { transform: "translateY(100%)" }], {
+        duration: 950,
+        delay: OPEN_AT,
+        easing: IN_OUT,
+      }).finished.then(finish);
     }
 
     return () => {
-      window.clearInterval(loop);
-      window.clearTimeout(wheelStop);
-      window.removeEventListener("resize", onResize);
-      running.forEach((a) => a.cancel());
+      cancelled = true;
+      timers.forEach((t) => window.clearTimeout(t));
+      anims.forEach((a) => a.cancel());
       html.style.overflow = "";
     };
   }, [reduced]);
@@ -381,18 +367,18 @@ export function Loader() {
             style={{ transform: "scaleX(0)" }}
             className="absolute inset-0 origin-left bg-gold shadow-[0_0_14px_rgb(217_164_65/0.75)] will-change-transform"
           />
-          {MILESTONES.slice(0, -1).map((at) => (
+          {STOPS.map((at) => (
             <span
               key={at}
-              data-tick
-              data-at={at}
+              data-stop
               style={{ left: `${at * 100}%` }}
-              className="absolute top-1/2 h-3 w-[2px] -translate-y-1/2 bg-white/25 transition-colors duration-300 data-on:bg-gold"
-            />
+              className="absolute top-1/2 h-3 w-[2px] -translate-y-1/2 bg-white/25"
+            >
+              <span data-stop-on data-at={at} className="absolute inset-0 bg-gold opacity-0" />
+            </span>
           ))}
           {/* the van rides on the line; its beam lights the road ahead */}
           <div data-van className="absolute bottom-0 left-0 w-[clamp(84px,9vw,136px)] will-change-transform">
-            {/* CSS (compositor) idle: engine shimmy and beam flicker */}
             <div className="loader-idle">
               <div className="loader-beam absolute bottom-[14%] left-[97%] h-[42%] w-[clamp(80px,12vw,180px)]" />
               <Van />
@@ -405,10 +391,15 @@ export function Loader() {
         </div>
       </div>
 
-      {/* status, bottom-left (phones: above the odometer) */}
+      {/* status, bottom-left (phones: above the odometer); lines cross-fade on the compositor */}
       <div data-out className="absolute bottom-[calc(17vw+2.5rem)] left-5 sm:bottom-10 sm:left-10 lg:left-16">
-        <p data-status aria-live="polite" className="font-condensed text-sm font-semibold uppercase tracking-[0.3em] text-gold">
-          {STATUS[0][1]}
+        <p className="relative h-5 font-condensed text-sm font-semibold uppercase tracking-[0.3em] text-gold">
+          <span className="sr-only">Loading</span>
+          {STATUS.map(([, text], i) => (
+            <span key={text} data-status-line aria-hidden className={`absolute left-0 top-0 whitespace-nowrap ${i ? "opacity-0" : ""}`}>
+              {text}
+            </span>
+          ))}
         </p>
         <p className="mt-2 hidden max-w-[16rem] text-sm text-white/45 sm:block">Safe, reliable, on-time rides to medical care.</p>
       </div>

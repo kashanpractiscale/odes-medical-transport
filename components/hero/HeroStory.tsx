@@ -115,6 +115,25 @@ export function HeroStory() {
   const reduced = useReducedMotion();
   const toggles = useToggles();
   const [active, setActive] = useState(true);
+  // The 3D scene boots only after the loading screen has opened and the headline has
+  // risen, so its heavy start-up (parse, build, first render) never overlaps an animation.
+  const [stageOn, setStageOn] = useState(false);
+  useEffect(() => {
+    let timer = 0;
+    let idle = 0;
+    const off = boot.onReveal(() => {
+      timer = window.setTimeout(() => {
+        const go = () => setStageOn(true);
+        if ("requestIdleCallback" in window) idle = window.requestIdleCallback(go, { timeout: 600 });
+        else go();
+      }, reduced ? 0 : 1500);
+    });
+    return () => {
+      off();
+      window.clearTimeout(timer);
+      if (idle) window.cancelIdleCallback(idle);
+    };
+  }, [reduced]);
   const [debug, setDebug] = useState(false);
   const [hinted, setHinted] = useState(false);
 
@@ -385,7 +404,9 @@ export function HeroStory() {
             </p>
           }
         >
-          <AmbulanceStage active={active} reducedMotion={reduced} debug={debug} words={BG_WORDS} eventSource={stage} />
+          {stageOn && (
+            <AmbulanceStage active={active} reducedMotion={reduced} debug={debug} words={BG_WORDS} eventSource={stage} />
+          )}
         </StageBoundary>
       </div>
 

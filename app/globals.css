@@ -235,14 +235,3 @@ html {
 @media (prefers-reduced-motion: reduce) {
   .loader-idle, .loader-idle .loader-beam { animation: none; }
 }
-/* Loader van wheels: spun on the compositor; paused until the loader starts a glide. */
-.loader-wheel {
-  animation: loader-wheel 0.5s linear infinite paused;
-  will-change: transform;
-}
-@keyframes loader-wheel {
-  to { transform: rotate(360deg); }
-}
-@media (prefers-reduced-motion: reduce) {
-  .loader-wheel { animation: none; }
-}
