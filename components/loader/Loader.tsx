@@ -7,7 +7,7 @@ import { COMPANY } from "@/lib/site";
 import { boot } from "./boot";
 
 const DRIVE_MS = 1700; // the whole route, start to finish
-const FONT_WAIT_MS = 2500; // longest we hold at 100 % for the display fonts
+const FONT_WAIT_MS = 1200; // longest we wait for the display fonts before driving
 const SAMPLES = 90; // keyframes per track (linear between them, so ~19 ms apart)
 const STOPS = [0.25, 0.5, 0.75]; // route stops that light up as the van passes
 
@@ -173,52 +173,72 @@ export function Loader() {
     if (!el) return;
     if (boot.revealed) {
       // already opened earlier in this session (e.g. a hot reload): stay out of the way
-      el.style.display = "none";
+      // (`hidden` also releases the CSS scroll lock in globals.css)
+      el.hidden = true;
       return;
     }
     const $ = (s: string) => el.querySelector<HTMLElement>(s)!;
     const $$ = (s: string) => [...el.querySelectorAll<HTMLElement>(s)];
-    const html = document.documentElement;
-    html.style.overflow = "hidden";
     const anims: Animation[] = [];
     const timers: number[] = [];
+    let idle = 0;
     let cancelled = false;
-
-    const track = $("[data-track]");
-    const van = $("[data-van]");
-    const fill = $("[data-fill]");
-    const bar = $("[data-bar]");
-    const drums = $$("[data-drum]");
-    const drumWraps = $$("[data-drum-wrap]");
-    const W = track.offsetWidth;
-    const vanW = van.offsetWidth;
-    const wheelPx = (vanW * WHEEL_R) / VAN_W;
-    const xAt = (p: number) => p * (W - vanW);
-
-    const fontsReady = Promise.race([
-      document.fonts?.ready ?? Promise.resolve(),
-      new Promise((r) => setTimeout(r, FONT_WAIT_MS)),
-    ]).then(() => boot.mark("fonts"));
 
     const run = (target: Element, frames: Keyframe[], o: KeyframeAnimationOptions) => {
       const a = target.animate(frames, { fill: "forwards", ...o });
       anims.push(a);
       return a;
     };
+    const finish = () => setGone(true);
 
-    let driven: Promise<unknown>;
-    if (reduced) {
-      // no travel: show the finished state
-      van.style.transform = `translateX(${xAt(1)}px)`;
-      fill.style.transform = "scaleX(1)";
-      drumPositions(100).forEach((c, i) => (drums[i].style.transform = drumY(c)));
-      drumWraps.forEach((w) => (w.style.opacity = "1"));
-      $$("[data-stop-on]").forEach((s) => (s.style.opacity = "1"));
-      $$("[data-status-line]").forEach((s, i) => (s.style.opacity = i === STATUS.length - 1 ? "1" : "0"));
-      bar.setAttribute("aria-valuenow", "100");
-      driven = Promise.resolve();
-    } else {
-      // -- one plan, sampled from one curve -----------------------------------------
+    // Start on a quiet page: once the display fonts are in (so no text reflows mid-drive)
+    // and the browser reports idle time after hydration (so the rest of the page setting
+    // up — scroll effects, smooth scrolling — is done). Until then the van idles in place.
+    const fontsReady = Promise.race([
+      document.fonts?.ready ?? Promise.resolve(),
+      new Promise((r) => setTimeout(r, FONT_WAIT_MS)),
+    ]).then(() => boot.mark("fonts"));
+    const quiet = new Promise<void>((r) => {
+      if (typeof window.requestIdleCallback === "function") idle = window.requestIdleCallback(() => r(), { timeout: 400 });
+      else timers.push(window.setTimeout(r, 0));
+    });
+    Promise.all([fontsReady, quiet]).then(() => {
+      if (!cancelled) begin();
+    });
+
+    /**
+     * Plans the entire sequence, drive and exit, in one go: after this call no
+     * JavaScript runs until the reveal timer, so nothing on the main thread can
+     * touch the motion.
+     */
+    function begin() {
+      const track = $("[data-track]");
+      const van = $("[data-van]");
+      const fill = $("[data-fill]");
+      const bar = $("[data-bar]");
+      const drums = $$("[data-drum]");
+      const drumWraps = $$("[data-drum-wrap]");
+      const W = track.offsetWidth;
+      const vanW = van.offsetWidth;
+      const wheelPx = (vanW * WHEEL_R) / VAN_W;
+      const xAt = (p: number) => p * (W - vanW);
+      const deg = (x: number) => (x / wheelPx) * (180 / Math.PI);
+
+      if (reduced) {
+        // no travel: show the finished state briefly, then fade
+        van.style.transform = `translateX(${xAt(1)}px)`;
+        fill.style.transform = "scaleX(1)";
+        drumPositions(100).forEach((c, i) => (drums[i].style.transform = drumY(c)));
+        drumWraps.forEach((w) => (w.style.opacity = "1"));
+        $$("[data-stop-on]").forEach((s) => (s.style.opacity = "1"));
+        $$("[data-status-line]").forEach((s, i) => (s.style.opacity = i === STATUS.length - 1 ? "1" : "0"));
+        bar.setAttribute("aria-valuenow", "100");
+        timers.push(window.setTimeout(() => boot.reveal(), 400));
+        run(el!, [{ opacity: 1 }, { opacity: 0 }], { duration: 350, delay: 400, easing: "ease-out" }).finished.then(finish);
+        return;
+      }
+
+      // -- the drive: one plan, sampled from one curve ---------------------------------
       const vanK: Keyframe[] = [];
       const fillK: Keyframe[] = [];
       const wheelK: Keyframe[] = [];
@@ -230,7 +250,7 @@ export function Loader() {
         const x = xAt(p);
         vanK.push({ offset: k, transform: `translateX(${x}px)` });
         fillK.push({ offset: k, transform: `scaleX(${(x + vanW * 0.55) / W})` });
-        wheelK.push({ offset: k, transform: `rotate(${(x / wheelPx) * (180 / Math.PI)}deg)` });
+        wheelK.push({ offset: k, transform: `rotate(${deg(x)}deg)` });
         const cells = drumPositions(p * 100);
         cells.forEach((c, j) => {
           if (prev && c < prev[j] - 0.5) {
@@ -244,7 +264,7 @@ export function Loader() {
       }
       const o = { duration: DRIVE_MS, easing: "linear" };
       performance.mark("boot:intro"); // the loader's drive starts here (DevTools > Timings)
-      driven = run(van, vanK, o).finished;
+      run(van, vanK, o);
       run(fill, fillK, o);
       $$("[data-wheel]").forEach((w) => run(w, wheelK, o));
       drums.forEach((d, j) => run(d, drumK[j], o));
@@ -261,48 +281,30 @@ export function Loader() {
       [25, 50, 75, 100].forEach((n) =>
         timers.push(window.setTimeout(() => bar.setAttribute("aria-valuenow", String(n)), timeOf(n / 100) * DRIVE_MS)),
       );
-    }
 
-    // open when the drive has finished and the display fonts are in
-    Promise.all([driven, fontsReady]).then(() => {
-      if (!cancelled) leave();
-    });
-
-    const finish = () => {
-      html.style.overflow = "";
-      setGone(true);
-    };
-
-    /** Exit, also on the compositor. */
-    function leave() {
-      if (reduced) {
-        boot.reveal();
-        run(el!, [{ opacity: 1 }, { opacity: 0 }], { duration: 350, easing: "ease-out" }).finished.then(finish);
-        return;
-      }
+      // -- the exit, scheduled now with delays (no script runs at the hand-off) --------
+      const T = DRIVE_MS;
       const IN = "cubic-bezier(0.55, 0.085, 0.68, 0.53)";
       const IN_OUT = "cubic-bezier(0.77, 0, 0.175, 1)";
       const x0 = xAt(1);
       const off = W + 80;
       // the van pulls away off the right edge, wheels turning with it…
-      run(van, [{ transform: `translateX(${x0}px)` }, { transform: `translateX(${off}px)` }], { duration: 500, easing: IN });
-      $$("[data-wheel]").forEach((w) => {
-        const r0 = (x0 / wheelPx) * (180 / Math.PI);
-        const r1 = (off / wheelPx) * (180 / Math.PI);
-        run(w, [{ transform: `rotate(${r0}deg)` }, { transform: `rotate(${r1}deg)` }], { duration: 500, easing: IN });
-      });
-      $$("[data-out]").forEach((o, i) =>
-        run(o, [{ opacity: 1, transform: "none" }, { opacity: 0, transform: `translateY(${i % 2 ? 18 : -18}px)` }], {
+      run(van, [{ transform: `translateX(${x0}px)` }, { transform: `translateX(${off}px)` }], { duration: 500, delay: T, easing: IN });
+      $$("[data-wheel]").forEach((w) =>
+        run(w, [{ transform: `rotate(${deg(x0)}deg)` }, { transform: `rotate(${deg(off)}deg)` }], { duration: 500, delay: T, easing: IN }),
+      );
+      $$("[data-out]").forEach((n, i) =>
+        run(n, [{ opacity: 1, transform: "none" }, { opacity: 0, transform: `translateY(${i % 2 ? 18 : -18}px)` }], {
           duration: 300,
-          delay: i * 20,
+          delay: T + i * 20,
           easing: IN,
         }),
       );
-      $$("[data-dashes], [data-stop]").forEach((o) => run(o, [{ opacity: 1 }, { opacity: 0 }], { duration: 250 }));
+      $$("[data-dashes], [data-stop]").forEach((n) => run(n, [{ opacity: 1 }, { opacity: 0 }], { duration: 250, delay: T }));
       // …the road flares, and the screen parts along it
-      run(fill, [{ transform: "scaleX(1) scaleY(1)" }, { transform: "scaleX(1) scaleY(3)" }], { duration: 180, delay: 300, easing: "ease-out" });
-      run(fill, [{ opacity: 1 }, { opacity: 0 }], { duration: 350, delay: 630 });
-      const OPEN_AT = 480;
+      run(fill, [{ transform: "scaleX(1) scaleY(1)" }, { transform: "scaleX(1) scaleY(3)" }], { duration: 180, delay: T + 300, easing: "ease-out" });
+      run(fill, [{ opacity: 1 }, { opacity: 0 }], { duration: 350, delay: T + 630 });
+      const OPEN_AT = T + 480;
       timers.push(window.setTimeout(() => boot.reveal(), OPEN_AT));
       run($("[data-panel='top']"), [{ transform: "none" }, { transform: "translateY(-100%)" }], { duration: 950, delay: OPEN_AT, easing: IN_OUT });
       run($("[data-panel='bottom']"), [{ transform: "none" }, { transform: "translateY(100%)" }], {
@@ -315,8 +317,8 @@ export function Loader() {
     return () => {
       cancelled = true;
       timers.forEach((t) => window.clearTimeout(t));
+      if (idle) window.cancelIdleCallback(idle);
       anims.forEach((a) => a.cancel());
-      html.style.overflow = "";
     };
   }, [reduced]);
 

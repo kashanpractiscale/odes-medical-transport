@@ -14,7 +14,7 @@ export default function Home() {
       <Loader />
       {/* without JavaScript nothing would ever open the loading screen */}
       <noscript>
-        <style>{"#loader{display:none}"}</style>
+        <style>{"#loader{display:none}html{overflow:auto!important}"}</style>
       </noscript>
       <SmoothScroll />
       <SiteHeader />

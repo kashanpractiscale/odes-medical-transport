@@ -126,7 +126,7 @@ export function HeroStory() {
         const go = () => setStageOn(true);
         if ("requestIdleCallback" in window) idle = window.requestIdleCallback(go, { timeout: 600 });
         else go();
-      }, reduced ? 0 : 1500);
+      }, reduced ? 0 : 2200); // after the headline's entrance (~1.9 s) has finished
     });
     return () => {
       off();
@@ -331,19 +331,30 @@ export function HeroStory() {
       gsap.ticker.add(couple);
 
       // One-off entrance for the hero copy on load (time-based, not scrubbed).
+      // Runs on the compositor (Web Animations), not GSAP, because it plays while the
+      // loading screen splits open — exactly when the rest of the page is busiest. Each
+      // animation holds its start pose through its delay (fill: backwards) and then hands
+      // back to the element's resting style, so the scroll timeline above stays in charge.
       let offReveal = () => {};
+      const introAnims: Animation[] = [];
       if (M && (ScrollTrigger.getAll()[0]?.progress ?? 0) < 0.02) {
-        // paused until the loading screen opens (the from-states apply now, so nothing flashes)
-        const intro = gsap.timeline({ paused: true, delay: 0.3 });
-        offReveal = boot.onReveal(() => intro.play());
-        intro.fromTo(sel(hero, "[data-w]"), { yPercent: 118, rotate: 6 }, { yPercent: 0, rotate: 0, duration: 1.1, stagger: 0.07, ease: "power4.out" });
-        intro.fromTo(sel(hero, "[data-eyebrow]"), { autoAlpha: 0, x: 40 }, { autoAlpha: 1, x: 0, duration: 0.8, ease: "power3.out" }, 0.1);
-        intro.fromTo(sel(hero, "[data-rule]"), { scaleX: 0 }, { scaleX: 1, duration: 0.9, ease: "power3.inOut" }, 0.35);
-        intro.fromTo(sel(hero, "[data-fade]"), { autoAlpha: 0, y: 20 }, { autoAlpha: 1, y: 0, duration: 0.8, stagger: 0.1, ease: "power3.out" }, 0.5);
+        const QUINT_OUT = "cubic-bezier(0.23, 1, 0.32, 1)"; // GSAP power4.out
+        const QUART_OUT = "cubic-bezier(0.25, 1, 0.5, 1)"; // power3.out
+        const QUART_IN_OUT = "cubic-bezier(0.76, 0, 0.24, 1)"; // power3.inOut
+        const at = 300; // ms after the screen starts to part
+        const play = (nodes: NodeListOf<Element>, frames: Keyframe[], duration: number, delay: number, easing: string, stagger = 0) =>
+          nodes.forEach((n, i) => introAnims.push(n.animate(frames, { duration, delay: at + delay + i * stagger, easing, fill: "backwards" })));
+        offReveal = boot.onReveal(() => {
+          play(sel(hero, "[data-w]"), [{ transform: "translateY(118%) rotate(6deg)" }, { transform: "none" }], 1100, 0, QUINT_OUT, 70);
+          play(sel(hero, "[data-eyebrow]"), [{ opacity: 0, transform: "translateX(40px)" }, { opacity: 1, transform: "none" }], 800, 100, QUART_OUT);
+          play(sel(hero, "[data-rule]"), [{ transform: "scaleX(0)" }, { transform: "none" }], 900, 350, QUART_IN_OUT);
+          play(sel(hero, "[data-fade]"), [{ opacity: 0, transform: "translateY(20px)" }, { opacity: 1, transform: "none" }], 800, 500, QUART_OUT, 100);
+        });
       }
       return () => {
         gsap.ticker.remove(couple);
         offReveal();
+        introAnims.forEach((a) => a.cancel());
       };
     },
     { scope: root, dependencies: [reduced], revertOnUpdate: true },

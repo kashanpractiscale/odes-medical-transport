@@ -235,3 +235,13 @@ html {
 @media (prefers-reduced-motion: reduce) {
   .loader-idle, .loader-idle .loader-beam { animation: none; }
 }
+
+/* While the loading screen is up the page can't scroll. Done in CSS so it applies from
+   the very first paint (no reflow when the loader's script starts), with the scrollbar's
+   space always reserved so nothing shifts when it comes back. */
+html {
+  scrollbar-gutter: stable;
+}
+html:has(#loader:not([hidden])) {
+  overflow: hidden;
+}
