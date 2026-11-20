@@ -10,7 +10,7 @@ const DRIVE_MS = 1700; // the whole route, start to finish
 const FONT_WAIT_MS = 1200; // longest we wait for the display fonts before driving
 const SCENE_WAIT_MS = 5000; // longest we wait at Pickup for the 3D van (slow device, no WebGL)
 const SAMPLES = 90; // keyframes per track (linear between them, so ~19 ms apart)
-const STOPS = [0.25, 0.5, 0.75]; // route stops that light up as the van passes
+const HEAD = 0.55; // the gold line's head (and its glowing dot), as a fraction of the van's length
 
 const STATUS = [
   [0, "Preparing your ride"],
@@ -226,6 +226,8 @@ export function Loader() {
       const wheelPx = (vanW * WHEEL_R) / VAN_W;
       const xAt = (p: number) => p * (W - vanW);
       const deg = (x: number) => (x / wheelPx) * (180 / Math.PI);
+      // the fill's head (and its glowing dot) sits under the van, a little past its middle
+      const headAt = (p: number) => Math.min(1, (xAt(p) + vanW * HEAD) / W);
 
       if (reduced) {
         // no travel: show the finished state briefly, then fade
@@ -233,7 +235,6 @@ export function Loader() {
         fill.style.transform = "scaleX(1)";
         drumPositions(100).forEach((c, i) => (drums[i].style.transform = drumY(c)));
         drumWraps.forEach((w) => (w.style.opacity = "1"));
-        $$("[data-stop-on]").forEach((s) => (s.style.opacity = "1"));
         $$("[data-status-line]").forEach((s, i) => (s.style.opacity = i === STATUS.length - 1 ? "1" : "0"));
         bar.setAttribute("aria-valuenow", "100");
         timers.push(window.setTimeout(() => boot.reveal(), 400));
@@ -252,7 +253,7 @@ export function Loader() {
         const p = ease(k);
         const x = xAt(p);
         vanK.push({ offset: k, transform: `translateX(${x}px)` });
-        fillK.push({ offset: k, transform: `scaleX(${(x + vanW * 0.55) / W})` });
+        fillK.push({ offset: k, transform: `scaleX(${headAt(p)})` });
         wheelK.push({ offset: k, transform: `rotate(${deg(x)}deg)` });
         const cells = drumPositions(p * 100);
         cells.forEach((c, j) => {
@@ -271,10 +272,9 @@ export function Loader() {
       run(fill, fillK, o);
       $$("[data-wheel]").forEach((w) => run(w, wheelK, o));
       drums.forEach((d, j) => run(d, drumK[j], o));
-      // leading zeros brighten as they come into use; stops light as the van passes them
+      // leading zeros brighten as they come into use
       run(drumWraps[1], stepFrames(timeOf(0.1), 0.15, 1), o);
       run(drumWraps[0], stepFrames(0.999, 0.15, 1, 0.02), o);
-      $$("[data-stop-on]").forEach((s) => run(s, stepFrames(timeOf(Number(s.dataset.at)), 0, 1, 0.04), o));
       $$("[data-status-line]").forEach((s, i) => {
         const a = timeOf(STATUS[i][0]);
         const b = i < STATUS.length - 1 ? timeOf(STATUS[i + 1][0]) : 1;
@@ -303,10 +303,14 @@ export function Loader() {
           easing: IN,
         }),
       );
-      $$("[data-dashes], [data-stop]").forEach((n) => run(n, [{ opacity: 1 }, { opacity: 0 }], { duration: 250, delay: T }));
-      // …the road flares, and the screen parts along it
-      run(fill, [{ transform: "scaleX(1) scaleY(1)" }, { transform: "scaleX(1) scaleY(3)" }], { duration: 180, delay: T + 300, easing: "ease-out" });
-      run(fill, [{ opacity: 1 }, { opacity: 0 }], { duration: 350, delay: T + 630 });
+      // the line completes behind it, the dashes go (a single keyframe fades from the
+      // element's own resting opacity)…
+      run(fill, [{ transform: `scaleX(${headAt(1)})` }, { transform: "scaleX(1)" }], { duration: 300, delay: T, easing: IN });
+      run($("[data-dashes]"), [{ opacity: 0 }], { duration: 250, delay: T });
+      // …the line flares, and the screen parts along it
+      const flare = $("[data-flare]");
+      run(flare, [{ transform: "scaleY(1)" }, { transform: "scaleY(2.6)" }], { duration: 180, delay: T + 300, easing: "ease-out" });
+      run(flare, [{ opacity: 1 }, { opacity: 0 }], { duration: 350, delay: T + 630 });
       const OPEN_AT = T + 480;
       timers.push(window.setTimeout(() => boot.reveal(), OPEN_AT));
       run($("[data-panel='top']"), [{ transform: "none" }, { transform: "translateY(-100%)" }], { duration: 950, delay: OPEN_AT, easing: IN_OUT });
@@ -364,26 +368,25 @@ export function Loader() {
         className="absolute inset-x-5 top-1/2 sm:inset-x-10 lg:inset-x-16"
       >
         <div data-track className="relative h-[2px]">
-          <div data-dashes className="loader-dashes absolute inset-0 opacity-35" />
-          {/* inline transform, not Tailwind's scale-x-0: v4 uses the separate `scale`
-              property, which would multiply with the animated transform */}
-          <div
-            data-fill
-            style={{ transform: "scaleX(0)" }}
-            className="absolute inset-0 origin-left bg-gold shadow-[0_0_14px_rgb(217_164_65/0.75)] will-change-transform"
-          />
-          {STOPS.map((at) => (
-            <span
-              key={at}
-              data-stop
-              style={{ left: `${at * 100}%` }}
-              className="absolute top-1/2 h-3 w-[2px] -translate-y-1/2 bg-white/25"
-            >
-              <span data-stop-on data-at={at} className="absolute inset-0 bg-gold opacity-0" />
-            </span>
-          ))}
+          {/* the route still to drive: a faint dashed hairline */}
+          <div data-dashes className="loader-dashes absolute inset-0 opacity-20" />
+          {/* the route driven: one solid gold hairline with a soft glow */}
+          <div data-flare className="absolute inset-0 will-change-transform">
+            {/* inline transform, not Tailwind's scale-x-0: v4 uses the separate `scale`
+                property, which would multiply with the animated transform */}
+            <div
+              data-fill
+              style={{ transform: "scaleX(0)" }}
+              className="absolute inset-0 origin-left rounded-full bg-gold shadow-[0_0_10px_rgb(217_164_65/0.6)] will-change-transform"
+            />
+          </div>
           {/* the van rides on the line; its beam lights the road ahead */}
           <div data-van className="absolute bottom-0 left-0 w-[clamp(84px,9vw,136px)] will-change-transform">
+            {/* the line's leading point, travelling with the van */}
+            <span
+              style={{ left: `${HEAD * 100}%` }}
+              className="absolute -bottom-[3px] size-2 -translate-x-1/2 rounded-full bg-[#ffe7ae] shadow-[0_0_0_3px_rgb(217_164_65/0.22),0_0_14px_3px_rgb(217_164_65/0.65)]"
+            />
             <div className="loader-idle">
               <div className="loader-beam absolute bottom-[14%] left-[97%] h-[42%] w-[clamp(80px,12vw,180px)]" />
               <Van />
