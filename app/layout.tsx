@@ -1,5 +1,9 @@
 import type { Metadata, Viewport } from "next";
 import { Anton, Barlow, Barlow_Condensed } from "next/font/google";
+import { SiteFooter } from "@/components/SiteFooter";
+import { SiteHeader } from "@/components/SiteHeader";
+import { SmoothScroll } from "@/components/SmoothScroll";
+import { PageTransition } from "@/components/transition/PageTransition";
 import { COMPANY, SEO, SITE_URL } from "@/lib/site";
 import "./globals.css";
 
@@ -42,7 +46,19 @@ export const viewport: Viewport = {
 export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
     <html lang="en" className={`${display.variable} ${condensed.variable} ${sans.variable} antialiased`}>
-      <body className="min-h-full bg-ink font-sans text-white">{children}</body>
+      <body className="min-h-full bg-ink font-sans text-white">
+        <a
+          href="#main"
+          className="fixed left-3 top-3 z-[100] -translate-y-24 rounded-full bg-gold px-5 py-3 font-condensed font-semibold uppercase tracking-[0.12em] text-ink transition-transform focus:translate-y-0"
+        >
+          Skip to content
+        </a>
+        <SmoothScroll />
+        <SiteHeader />
+        {children}
+        <SiteFooter />
+        <PageTransition />
+      </body>
     </html>
   );
 }

@@ -1,14 +1,12 @@
-import { SiteFooter } from "@/components/SiteFooter";
-import { SiteHeader } from "@/components/SiteHeader";
 import { Loader } from "@/components/loader/Loader";
 import { Contact } from "@/components/sections/Contact";
-import { SmoothScroll } from "@/components/SmoothScroll";
 import { StructuredData } from "@/components/StructuredData";
 import { HeroStory } from "@/components/hero/HeroStory";
 import { Mission } from "@/components/sections/Mission";
 import { Services } from "@/components/sections/Services";
 import { WhyOdes } from "@/components/sections/WhyOdes";
 
+// Header, footer, smooth scrolling and the page transition live in the root layout.
 export default function Home() {
   return (
     <>
@@ -18,10 +16,8 @@ export default function Home() {
       <noscript>
         <style>{"#loader{display:none}html{overflow:auto!important}"}</style>
       </noscript>
-      <SmoothScroll />
-      <SiteHeader />
 
-      <main>
+      <main id="main" tabIndex={-1} className="outline-none">
         <HeroStory />
         <Services />
         <Mission />
@@ -29,8 +25,6 @@ export default function Home() {
 
         <Contact />
       </main>
-
-      <SiteFooter />
     </>
   );
 }

@@ -5,6 +5,7 @@ import gsap from "gsap";
 import { ScrollTrigger } from "gsap/ScrollTrigger";
 import { useRef } from "react";
 import { useReducedMotion } from "@/components/hero/useReducedMotion";
+import { promoteWhile } from "@/lib/motion";
 import { BOOKING_STEPS, COMPANY } from "@/lib/site";
 import { BookingForm } from "./BookingForm";
 
@@ -38,6 +39,7 @@ export function Contact() {
         gsap.fromTo(el, { y: 90 * s }, { y: -90 * s, ease: "none", scrollTrigger: scrub() });
       });
       gsap.from(q("[data-rise]"), {
+        ...promoteWhile(q("[data-rise]")),
         autoAlpha: 0,
         y: 36,
         duration: 0.9,
@@ -58,8 +60,15 @@ export function Contact() {
     >
       {/* slow colour fields behind the sheet */}
       <div aria-hidden className="pointer-events-none absolute inset-0">
-        <div data-speed="-0.8" className="absolute -right-[12%] top-[6%] size-[46rem] rounded-full bg-[radial-gradient(closest-side,rgb(15_118_110/0.16),transparent)]" />
-        <div data-speed="0.5" className="absolute -left-[10%] bottom-[8%] size-[38rem] rounded-full bg-[radial-gradient(closest-side,rgb(217_164_65/0.18),transparent)]" />
+        {/* own layers (will-change), so drifting them never repaints the sheet */}
+        <div
+          data-speed="-0.8"
+          className="absolute -right-[12%] top-[6%] size-[46rem] rounded-full bg-[radial-gradient(closest-side,rgb(15_118_110/0.16),transparent)] will-change-transform"
+        />
+        <div
+          data-speed="0.5"
+          className="absolute -left-[10%] bottom-[8%] size-[38rem] rounded-full bg-[radial-gradient(closest-side,rgb(217_164_65/0.18),transparent)] will-change-transform"
+        />
       </div>
 
       <div className="relative mx-auto max-w-7xl px-5 pb-24 pt-24 sm:px-8 sm:pb-32 sm:pt-32">
@@ -71,10 +80,10 @@ export function Contact() {
           id="contact-title"
           className="mt-6 font-display text-[clamp(3rem,min(10.5vw,14vh),10rem)] uppercase leading-[0.86] tracking-tight"
         >
-          <span data-line="a" className="block">
+          <span data-line="a" className="block will-change-transform">
             Tell us where
           </span>
-          <span data-line="b" className="block text-teal sm:pl-[12%]">
+          <span data-line="b" className="block text-teal will-change-transform sm:pl-[12%]">
             you need to be
           </span>
         </h2>
@@ -106,8 +115,9 @@ export function Contact() {
         <ol className="mt-20 grid gap-5 md:grid-cols-3 lg:mt-28">
           {BOOKING_STEPS.map((s, i) => (
             // outer element carries the depth parallax, inner one the entrance (both move y)
-            <li key={s.name} data-speed={[0.1, 0.35, 0.6][i]}>
-              <div data-rise className="h-full rounded-3xl border border-ink/10 bg-white/80 p-7 backdrop-blur-sm sm:p-8">
+            <li key={s.name} data-speed={[0.1, 0.35, 0.6][i]} className="will-change-transform">
+              {/* solid card: a backdrop blur here re-blurred every frame as the fields drift behind */}
+              <div data-rise className="h-full rounded-3xl border border-ink/10 bg-white/90 p-7 sm:p-8">
                 <span className="font-display text-5xl leading-none text-gold">{String(i + 1).padStart(2, "0")}</span>
                 <h3 className="mt-6 font-display text-2xl uppercase leading-none">{s.name}</h3>
                 <p className="mt-3 text-pretty leading-relaxed text-ink/65">{s.body}</p>
@@ -140,7 +150,7 @@ export function Contact() {
           </div>
           <div
             data-rise
-            className="relative rounded-[2rem] border border-ink/10 bg-white/90 p-6 shadow-[0_30px_80px_-40px_rgb(7_18_17/0.45)] backdrop-blur-sm sm:p-10"
+            className="relative rounded-[2rem] border border-ink/10 bg-white/95 p-6 shadow-[0_30px_80px_-40px_rgb(7_18_17/0.45)] sm:p-10"
           >
             <BookingForm />
           </div>

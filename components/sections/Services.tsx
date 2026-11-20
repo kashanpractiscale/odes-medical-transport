@@ -6,6 +6,8 @@ import { ScrollTrigger } from "gsap/ScrollTrigger";
 import { useEffect, useRef } from "react";
 import { rig } from "@/components/ambulance/rig";
 import { useReducedMotion } from "@/components/hero/useReducedMotion";
+import { TransitionLink } from "@/components/transition/TransitionLink";
+import { promoteWhile } from "@/lib/motion";
 import { ALSO_AVAILABLE, COMPANY, SERVICES, VALUES } from "@/lib/site";
 
 gsap.registerPlugin(ScrollTrigger, useGSAP);
@@ -56,7 +58,7 @@ export function Services() {
         start: "top 88%",
         once: true,
         onEnter: (batch) =>
-          gsap.to(batch, { autoAlpha: 1, y: 0, duration: 0.9, ease: "power3.out", stagger: 0.08, overwrite: true }),
+          gsap.to(batch, { autoAlpha: 1, y: 0, duration: 0.9, ease: "power3.out", stagger: 0.08, overwrite: true, ...promoteWhile(batch) }),
       });
     },
     { scope: root, dependencies: [reduced], revertOnUpdate: true },
@@ -154,9 +156,9 @@ export function Services() {
               <a href={COMPANY.phoneHref} className={`${BTN} scene-cta bg-gold text-ink hover:bg-gold-light`}>
                 Call {COMPANY.phone}
               </a>
-              <a href="#book" className={`${BTN} border border-white/25 text-white hover:border-white/60 hover:bg-white/5`}>
+              <TransitionLink href="/book" className={`${BTN} border border-white/25 text-white hover:border-white/60 hover:bg-white/5`}>
                 Book a ride
-              </a>
+              </TransitionLink>
             </div>
           </div>
         </div>

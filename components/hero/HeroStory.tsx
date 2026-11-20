@@ -11,6 +11,7 @@ import { rig, toggle, useToggles, type ToggleKey } from "@/components/ambulance/
 import { IconBeacon, IconHazard, IconHeadlights, IconRearDoors, IconRotate, IconSideDoor } from "./icons";
 import { HeroPoster } from "./HeroPoster";
 import { useReducedMotion } from "./useReducedMotion";
+import { TransitionLink } from "@/components/transition/TransitionLink";
 import { COMPANY } from "@/lib/site";
 
 gsap.registerPlugin(ScrollTrigger, useGSAP);
@@ -261,8 +262,26 @@ export function HeroStory() {
       let last = "";
       // Studio key light comes from the upper right: default shadow falls down-left.
       const KEY = { x: -0.42, y: 0.9 };
+      // This runs on GSAP's ticker, i.e. every frame of the whole page, so it does nothing
+      // once the hero is off screen, and it never writes a style before it reads layout
+      // (a write followed by getBoundingClientRect forces a style recalc mid-frame).
+      let heroOn = true;
+      const io = new IntersectionObserver(([e]) => (heroOn = e.isIntersecting));
+      if (root.current) io.observe(root.current);
+      let lastPtr = "";
+      const shadows: [HTMLElement, number, number][] = [];
+      // Pointer parallax per depth plane (px per unit of pointer travel). Written straight
+      // onto each element's `translate`: an inherited custom property on the layer would
+      // restyle the whole caption subtree on every pointer frame.
+      const DEPTH = [
+        ["depth-far", -5, -3],
+        ["depth-mid", -11, -6],
+        ["depth-near", -16, -9],
+        ["depth-front", -22, -12],
+      ] as const;
+      const depthEls = DEPTH.flatMap(([c, fx, fy]) => (q(`.${c}`) as HTMLElement[]).map((el) => [el, fx, fy] as const));
       const couple = (_time: number, deltaMs: number) => {
-        if (!layer) return;
+        if (!layer || !heroOn) return;
         const dt = Math.min(0.1, deltaMs / 1000);
         // frame-rate independent easing (same feel at 60, 120 or 144 Hz)
         const ease = (rate: number) => 1 - Math.exp(-rate * dt);
@@ -270,28 +289,43 @@ export function HeroStory() {
         const tgt = M ? rig.ptr : { x: 0, y: 0 };
         rig.ptrS.x += (tgt.x - rig.ptrS.x) * ease(4.5);
         rig.ptrS.y += (tgt.y - rig.ptrS.y) * ease(4.5);
-        layer.style.setProperty("--px", rig.ptrS.x.toFixed(3));
-        layer.style.setProperty("--py", rig.ptrS.y.toFixed(3));
         // while the page scrolls, ease any drag rotation home so each chapter frames its view
         if (!rig.dragging && performance.now() - scrolledAt < 250 && Math.abs(rig.userYaw) > 0.0005) {
           rig.userYaw *= reduced ? 0 : 1 - ease(3.2);
           rig.invalidate();
         }
 
-        // Shadow direction blends from the studio key light towards "away from the headlamps".
+        // READ: shadow direction blends from the studio key light towards "away from the
+        // headlamps". With the lamps dark it is simply the key light: no layout reads at all.
         const L = rig.lamp;
+        shadows.length = 0;
         for (const el of lit) {
           if (el.style.visibility === "hidden") continue;
-          const r = el.getBoundingClientRect();
-          let dx = r.left + r.width / 2 - L.x;
-          let dy = r.top + r.height / 2 - L.y;
-          const dist = Math.hypot(dx, dy) || 1;
-          const reach = Math.max(0, 1 - dist / (window.innerWidth * 1.25));
-          const w = Math.min(1, L.a * reach * 2.3);
-          dx /= dist;
-          dy /= dist;
-          const sx = KEY.x + (dx - KEY.x) * w;
-          const sy = KEY.y + (dy - KEY.y) * w;
+          let sx = KEY.x;
+          let sy = KEY.y;
+          if (L.a > 0.001) {
+            const r = el.getBoundingClientRect();
+            let dx = r.left + r.width / 2 - L.x;
+            let dy = r.top + r.height / 2 - L.y;
+            const dist = Math.hypot(dx, dy) || 1;
+            const reach = Math.max(0, 1 - dist / (window.innerWidth * 1.25));
+            const w = Math.min(1, L.a * reach * 2.3);
+            dx /= dist;
+            dy /= dist;
+            sx = KEY.x + (dx - KEY.x) * w;
+            sy = KEY.y + (dy - KEY.y) * w;
+          }
+          shadows.push([el, sx, sy]);
+        }
+
+        // WRITE (only what changed)
+        const ptr = `${rig.ptrS.x.toFixed(3)}|${rig.ptrS.y.toFixed(3)}`;
+        if (ptr !== lastPtr) {
+          lastPtr = ptr;
+          const { x, y } = rig.ptrS;
+          for (const [el, fx, fy] of depthEls) el.style.translate = `${(x * fx).toFixed(2)}px ${(y * fy).toFixed(2)}px`;
+        }
+        for (const [el, sx, sy] of shadows) {
           const key = `${sx.toFixed(2)}|${sy.toFixed(2)}`;
           if (litKey.get(el) === key) continue;
           litKey.set(el, key);
@@ -307,8 +341,9 @@ export function HeroStory() {
         const key = `${yaw.toFixed(2)}|${tx.toFixed(1)}`;
         if (key === last) return;
         last = key;
-        layer.style.setProperty("--cap-yaw", `${yaw.toFixed(2)}deg`);
-        layer.style.setProperty("--cap-tx", `${tx.toFixed(1)}px`);
+        // the layer's own transform (not inherited custom properties: those would restyle
+        // every caption element on each scroll frame)
+        layer.style.transform = `perspective(1400px) rotateY(${yaw.toFixed(2)}deg) translateX(${tx.toFixed(1)}px)`;
       };
       gsap.ticker.add(couple);
 
@@ -335,6 +370,7 @@ export function HeroStory() {
       }
       return () => {
         gsap.ticker.remove(couple);
+        io.disconnect();
         offReveal();
         introAnims.forEach((a) => a.cancel());
       };
@@ -446,9 +482,9 @@ export function HeroStory() {
               reach their appointment without the stress of getting there.
             </p>
             <div data-fade className="depth-front mt-6 flex flex-wrap gap-2.5 sm:mt-8 sm:gap-3 compact:mt-6 short:mt-4">
-              <a href="#book" className={`${BTN} scene-cta bg-gold text-ink hover:bg-gold-light`}>
+              <TransitionLink href="/book" className={`${BTN} scene-cta bg-gold text-ink hover:bg-gold-light`}>
                 Book a ride
-              </a>
+              </TransitionLink>
               <a href={COMPANY.phoneHref} className={`${BTN} scene-cta scene-glass text-white short:hidden`}>
                 Call {COMPANY.phone}
               </a>
@@ -479,9 +515,9 @@ export function HeroStory() {
               <Words text="Ready|when you are." accent={[3]} />
             </h2>
             <div data-fade className="depth-front mt-8 compact:mt-6 short:mt-4">
-              <a href="#book" className={`${BTN} scene-cta bg-gold text-ink hover:bg-gold-light`}>
+              <TransitionLink href="/book" className={`${BTN} scene-cta bg-gold text-ink hover:bg-gold-light`}>
                 Book a ride
-              </a>
+              </TransitionLink>
             </div>
           </div>
         </div>
@@ -507,7 +543,7 @@ export function HeroStory() {
           <div
             role="toolbar"
             aria-label="Vehicle controls"
-            className="flex max-w-full gap-1 overflow-x-auto rounded-full border border-white/10 bg-ink/70 p-1.5 shadow-2xl backdrop-blur-md"
+            className="flex max-w-full gap-1 overflow-x-auto rounded-full border border-white/10 bg-ink/90 p-1.5 shadow-2xl"
           >
             {CONTROLS.map(({ key, label, icon: Icon }) => {
               const on = toggles[key];

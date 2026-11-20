@@ -9,6 +9,7 @@ import { claimRoad, rig } from "@/components/ambulance/rig";
 import { L } from "@/components/ambulance/spec";
 import { clamp, smoothstep } from "@/components/ambulance/surface";
 import { useReducedMotion } from "@/components/hero/useReducedMotion";
+import { TransitionLink } from "@/components/transition/TransitionLink";
 import { COMPANY, MISSION_SCENE } from "@/lib/site";
 
 gsap.registerPlugin(ScrollTrigger, useGSAP);
@@ -185,24 +186,27 @@ export function Mission() {
         className={`${reduced ? "absolute inset-0" : "sticky top-0 h-svh"} overflow-hidden bg-[#040b14]`}
       >
         <div className="mission-sky-dusk absolute inset-0" />
-        <div data-dawn className="mission-sky-dawn absolute inset-0 opacity-0" />
-        <div data-stars className="mission-stars absolute inset-x-0 top-0 h-[55%]" />
+        {/* Everything that moves or fades on scroll gets its own compositor layer
+            (will-change): GSAP's per-frame sets are plain 2D transforms / opacity, which
+            would otherwise repaint this whole full-screen scene on every frame. */}
+        <div data-dawn className="mission-sky-dawn absolute inset-0 opacity-0 will-change-[opacity]" />
+        <div data-stars className="mission-stars absolute inset-x-0 top-0 h-[55%] will-change-[opacity]" />
         <div className="absolute left-[58%] top-[34%] aspect-square w-[min(34vw,420px)] -translate-x-1/2 sm:left-[64%]">
-          <div data-sun className="mission-sun size-full rounded-full" />
+          <div data-sun className="mission-sun size-full rounded-full will-change-[transform,opacity]" />
         </div>
 
         <div className="absolute inset-x-0 bottom-[20%] h-[38%] sm:bottom-[22%]">
           <div
             data-plane="mountains"
-            className="mission-tile absolute bottom-0 left-0 h-full w-[300%] bg-[url(/parallax/mountains.svg)]"
+            className="mission-tile absolute bottom-0 left-0 h-full w-[300%] bg-[url(/parallax/mountains.svg)] will-change-transform"
           />
         </div>
 
         {/* the closing line stands between the hills and the city */}
-        <div data-plane="words" className="absolute inset-x-0 bottom-[31%] flex justify-center sm:bottom-[27%]">
+        <div data-plane="words" className="absolute inset-x-0 bottom-[31%] flex justify-center will-change-transform sm:bottom-[27%]">
           <p
             data-big
-            className="opacity-0 text-center font-display text-[clamp(4.5rem,min(19vw,calc(37vh_-_4.5rem)),15rem)] sm:text-[clamp(4.5rem,min(16vw,calc(37vh_-_4.5rem)),15rem)] uppercase leading-[0.82] tracking-tight text-[#fff6e3]"
+            className="opacity-0 will-change-[transform,opacity] text-center font-display text-[clamp(4.5rem,min(19vw,calc(37vh_-_4.5rem)),15rem)] sm:text-[clamp(4.5rem,min(16vw,calc(37vh_-_4.5rem)),15rem)] uppercase leading-[0.82] tracking-tight text-[#fff6e3]"
           >
             One ride
             <br />
@@ -211,15 +215,18 @@ export function Mission() {
         </div>
 
         <div className="absolute inset-x-0 bottom-[20%] h-[22%] sm:bottom-[22%] sm:h-[26%]">
-          <div data-plane="city" className="mission-tile absolute bottom-0 left-0 h-full w-[300%] bg-[url(/parallax/city.svg)]">
-            <div data-windows className="mission-tile absolute inset-0 bg-[url(/parallax/city-windows.svg)]" />
+          <div
+            data-plane="city"
+            className="mission-tile absolute bottom-0 left-0 h-full w-[300%] bg-[url(/parallax/city.svg)] will-change-transform"
+          >
+            <div data-windows className="mission-tile absolute inset-0 bg-[url(/parallax/city-windows.svg)] will-change-[opacity]" />
           </div>
         </div>
 
         {/* road: the van's wheels sit on 56 % of this band (see the camera rig) */}
         <div ref={road} className="mission-road absolute inset-x-0 bottom-0 h-[20%] sm:h-[22%]">
-          <div data-plane="road" className="mission-dashes absolute left-0 top-[22%] h-[3px] w-[calc(100%+160px)]" />
-          <div data-kerb className="mission-kerb absolute left-0 top-[62%] h-[8%] w-[calc(100%+120px)]" />
+          <div data-plane="road" className="mission-dashes absolute left-0 top-[22%] h-[3px] w-[calc(100%+160px)] will-change-transform" />
+          <div data-kerb className="mission-kerb absolute left-0 top-[62%] h-[8%] w-[calc(100%+120px)] will-change-transform" />
         </div>
       </div>
 
@@ -233,7 +240,7 @@ export function Mission() {
           <div
             aria-hidden
             data-plane="palms"
-            className="mission-tile absolute bottom-[-2%] left-0 h-[92%] w-[300%] bg-[url(/parallax/palms.svg)] opacity-95 max-sm:h-[62%] short:h-[88%]"
+            className="mission-tile absolute bottom-[-2%] left-0 h-[92%] w-[300%] bg-[url(/parallax/palms.svg)] opacity-95 will-change-transform max-sm:h-[62%] short:h-[88%]"
           />
         )}
 
@@ -244,7 +251,7 @@ export function Mission() {
         >
           <div
             data-beat="1"
-            className={`${reduced ? "" : "absolute inset-x-5 top-[14%] sm:inset-x-8 short:top-[16%]"} max-w-3xl`}
+            className={`${reduced ? "" : "absolute inset-x-5 top-[14%] will-change-[transform,opacity] sm:inset-x-8 short:top-[16%]"} max-w-3xl`}
           >
             <p className="mb-5 flex items-center gap-3 font-condensed text-sm font-semibold uppercase tracking-[0.3em] text-gold short:mb-3">
               <span className="h-px w-10 bg-gold" />
@@ -263,7 +270,7 @@ export function Mission() {
 
           <div
             data-beat="2"
-            className={`${reduced ? "" : "invisible absolute inset-x-5 top-[14%] sm:inset-x-8 short:top-[14%]"} max-w-4xl`}
+            className={`${reduced ? "" : "invisible absolute inset-x-5 top-[14%] will-change-[transform,opacity] sm:inset-x-8 short:top-[14%]"} max-w-4xl`}
           >
             <p className="mb-5 flex items-center gap-3 font-condensed text-sm font-semibold uppercase tracking-[0.3em] text-gold short:mb-3">
               <span className="h-px w-10 bg-gold" />
@@ -285,7 +292,7 @@ export function Mission() {
           <div
             data-beat="3"
             className={`${
-              reduced ? "" : "invisible absolute inset-x-5 top-[12%] text-center sm:inset-x-8 short:top-[14%]"
+              reduced ? "" : "invisible absolute inset-x-5 top-[12%] text-center will-change-[transform,opacity] sm:inset-x-8 short:top-[14%]"
             }`}
           >
             <p className="font-condensed text-sm font-semibold uppercase tracking-[0.3em] text-gold">
@@ -295,12 +302,12 @@ export function Mission() {
               One ride at a time
             </h3>
             <div className={`mt-6 flex flex-wrap gap-3 ${reduced ? "" : "pointer-events-auto justify-center"}`}>
-              <a href="#book" className={`${BTN} scene-cta bg-gold text-ink hover:bg-gold-light`}>
+              <TransitionLink href="/book" className={`${BTN} scene-cta bg-gold text-ink hover:bg-gold-light`}>
                 Book a ride
-              </a>
+              </TransitionLink>
               <a
                 href={COMPANY.phoneHref}
-                className={`${BTN} border border-white/25 bg-ink/85 text-white shadow-[0_12px_30px_-12px_rgb(0_0_0/0.75)] backdrop-blur-md hover:border-white/60 hover:bg-ink`}
+                className={`${BTN} border border-white/25 bg-ink/90 text-white shadow-[0_12px_30px_-12px_rgb(0_0_0/0.75)] hover:border-white/60 hover:bg-ink`}
               >
                 Call {COMPANY.phone}
               </a>

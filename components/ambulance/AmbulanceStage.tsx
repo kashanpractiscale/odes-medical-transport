@@ -277,7 +277,9 @@ export default function AmbulanceStage({
   eventSource?: React.RefObject<HTMLElement | null>;
   onReady?: () => void;
 }) {
-  const [maxDpr] = useState(() => Math.min(2, typeof window === "undefined" ? 1 : window.devicePixelRatio || 1));
+  // The canvas covers the whole screen on every scroll frame. At 1.5× (antialiased) the van
+  // is still crisp, and a 2× retina screen shades ~44 % fewer pixels than at native 2×.
+  const [maxDpr] = useState(() => Math.min(1.5, typeof window === "undefined" ? 1 : window.devicePixelRatio || 1));
   const [dpr, setDpr] = useState(maxDpr);
   const statsRef = useRef<HTMLPreElement>(null);
   // Shaders compiled (off the main thread) yet? And has the loading screen opened?

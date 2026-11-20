@@ -7,6 +7,7 @@ import "lenis/dist/lenis.css";
 import { useEffect } from "react";
 import { boot } from "./loader/boot";
 import { useReducedMotion } from "./hero/useReducedMotion";
+import { scroller } from "./scroll";
 
 gsap.registerPlugin(ScrollTrigger);
 
@@ -28,6 +29,7 @@ export function SmoothScroll() {
       anchors: { offset: 0, duration: 1.4 }, // in-page links glide instead of jumping
     });
     lenis.on("scroll", ScrollTrigger.update);
+    scroller.lenis = lenis;
     // hold the page still behind the loading screen
     if (!boot.revealed) lenis.stop();
     const offReveal = boot.onReveal(() => lenis.start());
@@ -38,6 +40,7 @@ export function SmoothScroll() {
       gsap.ticker.remove(tick);
       gsap.ticker.lagSmoothing(500, 33);
       offReveal();
+      if (scroller.lenis === lenis) scroller.lenis = null;
       lenis.destroy();
     };
   }, [reduced]);

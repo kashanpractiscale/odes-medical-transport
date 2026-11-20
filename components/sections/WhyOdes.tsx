@@ -5,6 +5,8 @@ import gsap from "gsap";
 import { ScrollTrigger } from "gsap/ScrollTrigger";
 import { useRef } from "react";
 import { useReducedMotion } from "@/components/hero/useReducedMotion";
+import { TransitionLink } from "@/components/transition/TransitionLink";
+import { promoteWhile } from "@/lib/motion";
 import { COMMITMENT, COMPANY, TAGLINE, WHY } from "@/lib/site";
 
 gsap.registerPlugin(ScrollTrigger, useGSAP);
@@ -121,7 +123,10 @@ export function WhyOdes() {
       gsap.fromTo(q("[data-band='b']"), { xPercent: -18 }, { xPercent: 0, ease: "none", scrollTrigger: scrub });
 
       const grid = q("[data-cards]")[0];
-      const tl = gsap.timeline({ scrollTrigger: { trigger: grid, start: "top 78%", once: true } });
+      const tl = gsap.timeline({
+        scrollTrigger: { trigger: grid, start: "top 78%", once: true },
+        ...promoteWhile(q("[data-tile], [data-day], [data-note]")),
+      });
       tl.from(q("[data-tile]"), { autoAlpha: 0, y: 48, duration: 0.9, ease: "power3.out", stagger: 0.09 })
         .fromTo(q("[data-route]"), { strokeDashoffset: 1 }, { strokeDashoffset: 0, duration: 1.4, ease: "power2.inOut" }, 0.35)
         .from(q("[data-route-pin]"), { scale: 0, transformOrigin: "50% 50%", duration: 0.5, ease: "back.out(2.2)" }, 1.55)
@@ -142,8 +147,11 @@ export function WhyOdes() {
   };
 
   const band = (k: "a" | "b", outline: boolean) => (
+    // Two copies are enough to cover the screen through the band's whole travel (it moves
+    // 18 % of its width). Three made it so wide that Chrome kept re-recording and
+    // re-rasterising it as it slid, instead of just moving one finished layer.
     <div data-band={k} className="flex w-max gap-10 whitespace-nowrap will-change-transform">
-      {Array.from({ length: 3 }, (_, r) =>
+      {Array.from({ length: 2 }, (_, r) =>
         TAGLINE.map((t, i) => (
           <span
             key={`${r}-${i}`}
@@ -269,9 +277,9 @@ export function WhyOdes() {
                 <IconPhone className="size-4" />
                 Call {COMPANY.phone}
               </a>
-              <a href="#book" className={`${BTN} border border-ink/25 hover:border-ink/60 hover:bg-ink/5 focus-visible:outline-ink`}>
+              <TransitionLink href="/book" className={`${BTN} border border-ink/25 hover:border-ink/60 hover:bg-ink/5 focus-visible:outline-ink`}>
                 Request a ride
-              </a>
+              </TransitionLink>
             </div>
           </article>
         </div>

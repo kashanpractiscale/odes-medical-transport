@@ -153,9 +153,20 @@ export const BOOKING_STEPS = [
   { name: "Door to door", body: "We get you there safely and on time, and coordinate the ride home." },
 ] as const;
 
+/** Every page, with the name shown on the transition curtain when travelling to it. */
+export const ROUTES = {
+  "/": "Home",
+  "/services": "Services",
+  "/about": "About Odes",
+  "/service-area": "Service area",
+  "/book": "Book a ride",
+} as const;
+export type Route = keyof typeof ROUTES;
+
+/** Primary navigation (the logo is Home; "Book a ride" is the header's button). */
 export const NAV = [
-  { label: "Services", href: "#services" },
-  { label: "About", href: "#mission" },
-  { label: "Why Odes", href: "#why" },
-  { label: "Book a ride", href: "#book" },
+  { label: "Services", href: "/services" },
+  { label: "About", href: "/about" },
+  { label: "Service area", href: "/service-area" },
+  { label: "Book a ride", href: "/book" },
 ] as const;
