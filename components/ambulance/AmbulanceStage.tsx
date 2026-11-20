@@ -13,6 +13,7 @@ import { rig } from "./rig";
 import { boot } from "@/components/loader/boot";
 import { L } from "./spec";
 import { SceneWords } from "./SceneWords";
+import { Spotlight } from "./Spotlight";
 
 /**
  * Gradient dome for the environment bake: bright soft sky, a crisp horizon and a dark
@@ -96,7 +97,8 @@ function Floor() {
   const mesh = useRef<THREE.Mesh>(null);
   useFrame(() => {
     const k = 1 - smoothstep(0, 0.6, rig.exit);
-    mat.opacity = k;
+    // the stage dims a little when the spotlight comes on, so its pool reads
+    mat.opacity = k * (1 - 0.35 * rig.spot);
     if (mesh.current) mesh.current.visible = k > 0.01;
   });
   return <mesh ref={mesh} geometry={geo} material={mat} renderOrder={-2} />;
@@ -333,6 +335,7 @@ export default function AmbulanceStage({
         <Suspense fallback={null}>
           <Studio />
           <Floor />
+          <Spotlight />
           <SceneWords words={words} />
           {vanMounted && (
             <>

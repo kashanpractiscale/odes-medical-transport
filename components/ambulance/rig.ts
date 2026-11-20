@@ -24,6 +24,8 @@ export const rig = {
   driveOn: false,
   /** Arrival in the footer (0‥1): drives in from the left and parks. */
   park: 0,
+  /** Hero stage spotlight level (0‥1), written by the Spotlight; the floor dims under it. */
+  spot: 0,
   /** Progress through the mission scene (0‥1), scrubbed on scroll. */
   drive: 0,
   /** Van x (m) in the mission scene, written by the camera which knows the frame width. */
