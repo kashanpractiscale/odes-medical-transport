@@ -33,11 +33,18 @@ export function SiteFooter() {
 
   useGSAP(
     () => {
+      // The footer keeps the van from the moment it scrolls in until the very end of the page.
+      // Not `onToggle`/`isActive`: ScrollTrigger counts a trigger as active only while
+      // 0 < progress < 1, and with `end: "max"` progress hits exactly 1 at the bottom of the
+      // page, which handed the road back and made the van vanish. Hold it while progress > 0
+      // (onUpdate on every scroll change, onRefresh for loads and resizes at any position).
+      const hold = (s: ScrollTrigger) => claimRoad(road.current, "park", s.progress > 0);
       ScrollTrigger.create({
         trigger: root.current,
         start: reduced ? "top 70%" : "top bottom",
         end: "max",
-        onToggle: (s) => claimRoad(road.current, "park", s.isActive),
+        onUpdate: hold,
+        onRefresh: hold,
       });
       if (reduced) {
         rig.park = 1; // already parked; nothing travels
