@@ -24,6 +24,9 @@ export const boot = {
     markWaiters.get(step)?.forEach((f) => f());
     markWaiters.delete(step);
   },
+  has(step: BootStep) {
+    return done.has(step);
+  },
   /** Resolves once `step` has been marked (immediately if it already has). */
   whenMarked(step: BootStep) {
     if (done.has(step)) return Promise.resolve();

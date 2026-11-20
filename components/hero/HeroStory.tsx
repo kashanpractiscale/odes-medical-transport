@@ -9,6 +9,7 @@ import { VIEWS, cameraAt } from "@/components/ambulance/animation";
 import { boot } from "@/components/loader/boot";
 import { rig, toggle, useToggles, type ToggleKey } from "@/components/ambulance/rig";
 import { IconBeacon, IconHazard, IconHeadlights, IconRearDoors, IconRotate, IconSideDoor } from "./icons";
+import { HeroPoster } from "./HeroPoster";
 import { useReducedMotion } from "./useReducedMotion";
 import { COMPANY } from "@/lib/site";
 
@@ -399,6 +400,8 @@ export function HeroStory() {
           {/* mounts straight away: the van builds behind the loading screen, which waits at
               "Pickup" until its first frame is drawn (see Loader) */}
           <AmbulanceStage active={active} reducedMotion={reduced} debug={debug} words={BG_WORDS} eventSource={stage} />
+          {/* a still of the parked van, shown only if the screen opens before the live van is ready */}
+          <HeroPoster />
         </StageBoundary>
       </div>
 

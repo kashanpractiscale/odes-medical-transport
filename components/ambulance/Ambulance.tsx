@@ -313,7 +313,14 @@ export function Ambulance() {
         // this frame has been drawn
         boot.mark("frame");
         if (rig.reducedMotion) return;
-        // drive in as the loading screen parts (straight away if it already has)
+        // The screen already opened before the van was ready (slower devices): the hero is
+        // showing the poster still of the parked van, so stay parked and let the poster
+        // fade over this identical pose (HeroPoster) instead of driving in.
+        if (boot.revealed) {
+          rig.intro = 1;
+          return;
+        }
+        // drive in as the loading screen parts
         offDrive.current = boot.onReveal(() => {
           driveIn.current = gsap.fromTo(rig, { intro: 0 }, { intro: 1, duration: 3.1, ease: "none", delay: 0.05 });
         });
