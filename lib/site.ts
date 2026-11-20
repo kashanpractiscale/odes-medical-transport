@@ -14,6 +14,35 @@ export const COMPANY = {
   serviceArea: "Los Angeles County",
 } as const;
 
+/**
+ * Canonical origin for metadata, the sitemap and structured data. Set NEXT_PUBLIC_SITE_URL
+ * once a custom domain is live; until then Vercel's production domain is used.
+ */
+export const SITE_URL = (
+  process.env.NEXT_PUBLIC_SITE_URL ??
+  (process.env.VERCEL_PROJECT_PRODUCTION_URL
+    ? `https://${process.env.VERCEL_PROJECT_PRODUCTION_URL}`
+    : "http://localhost:3000")
+).replace(/\/$/, "");
+
+/** Search-result copy: title ≤ 60 characters, description ≤ ~160. */
+export const SEO = {
+  title: "Non-Emergency Medical Transportation in Los Angeles | Odes",
+  description:
+    "Safe, on-time non-emergency medical transportation in Los Angeles County. Wheelchair and ambulatory rides to appointments, dialysis and hospital discharge.",
+  keywords: [
+    "non-emergency medical transportation",
+    "NEMT Los Angeles",
+    "wheelchair transportation Los Angeles",
+    "ambulatory transportation",
+    "dialysis transportation",
+    "hospital discharge transportation",
+    "senior medical transportation",
+    "medical rides Gardena CA",
+    "Los Angeles County medical transport",
+  ],
+} as const;
+
 export const MISSION =
   "Odes was founded to remove the barriers that keep patients from the medical care they need. Unreliable transportation is one of the leading causes of missed appointments, so we provide safe, reliable and timely rides — improving health outcomes one ride at a time.";
 
