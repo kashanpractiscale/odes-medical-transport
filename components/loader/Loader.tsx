@@ -8,6 +8,7 @@ import { boot } from "./boot";
 
 const DRIVE_MS = 1700; // the whole route, start to finish
 const FONT_WAIT_MS = 1200; // longest we wait for the display fonts before driving
+const SCENE_WAIT_MS = 5000; // longest we wait at Pickup for the 3D van (slow device, no WebGL)
 const SAMPLES = 90; // keyframes per track (linear between them, so ~19 ms apart)
 const STOPS = [0.25, 0.5, 0.75]; // route stops that light up as the van passes
 
@@ -159,9 +160,9 @@ const stepFrames = (t: number, from: number, to: number, fade = 0.03): Keyframe[
  * Built to be perfectly smooth: the whole sequence is planned once, up front, as Web
  * Animations keyframes from one easing curve (van, gold line, wheels, odometer drums and
  * their dimming, route stops, status text), so it runs entirely on the compositor with no
- * JavaScript per frame. Nothing heavy happens underneath it either: the 3D scene does not
- * start loading until this has opened (see HeroStory), so the GPU is never shared with
- * shader compiles or texture uploads while it plays.
+ * JavaScript per frame. Nothing heavy happens underneath the drive either: the 3D van is
+ * built while this waits at "Pickup", so by the time anything moves across the screen
+ * the page is quiet, and the van is ready to drive in as the screen parts.
  */
 export function Loader() {
   const root = useRef<HTMLDivElement>(null);
@@ -191,19 +192,21 @@ export function Loader() {
     };
     const finish = () => setGone(true);
 
-    // Start on a quiet page: once the display fonts are in (so no text reflows mid-drive)
-    // and the browser reports idle time after hydration (so the rest of the page setting
-    // up — scroll effects, smooth scrolling — is done). Until then the van idles in place.
+    // Wait at Pickup while the heavy work happens: the display fonts, and the 3D van
+    // building behind this screen (three.js parse, geometry, shader compile, first frame).
+    // Only the CSS idle motion (engine shimmy, beam, pulse) plays meanwhile, and nothing
+    // is travelling across the screen to stutter. Once the van has drawn its first frame
+    // and the browser reports idle time, the page is quiet and the drive plays smoothly.
     const fontsReady = Promise.race([
       document.fonts?.ready ?? Promise.resolve(),
       new Promise((r) => setTimeout(r, FONT_WAIT_MS)),
     ]).then(() => boot.mark("fonts"));
-    const quiet = new Promise<void>((r) => {
-      if (typeof window.requestIdleCallback === "function") idle = window.requestIdleCallback(() => r(), { timeout: 400 });
-      else timers.push(window.setTimeout(r, 0));
-    });
-    Promise.all([fontsReady, quiet]).then(() => {
-      if (!cancelled) begin();
+    const sceneReady = Promise.race([boot.whenMarked("frame"), new Promise((r) => setTimeout(r, SCENE_WAIT_MS))]);
+    Promise.all([fontsReady, sceneReady]).then(() => {
+      if (cancelled) return;
+      if (typeof window.requestIdleCallback === "function")
+        idle = window.requestIdleCallback(() => !cancelled && begin(), { timeout: 400 });
+      else timers.push(window.setTimeout(() => !cancelled && begin(), 0));
     });
 
     /**

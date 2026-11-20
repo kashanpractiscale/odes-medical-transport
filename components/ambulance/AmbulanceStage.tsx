@@ -201,6 +201,15 @@ function Warmup({ onDone }: { onDone: (done: true) => void }) {
       .finally(() => {
         if (!alive) return;
         performance.measure("boot:compile", { start: t0, end: performance.now() });
+        // Upload every texture now. Behind the loader the van waits off-screen, so three.js
+        // would skip it and upload its 2048 px livery on the first frame it appears in,
+        // in the middle of the reveal.
+        scene.traverse((o) => {
+          const m = (o as THREE.Mesh).material as THREE.Material | THREE.Material[] | undefined;
+          (Array.isArray(m) ? m : m ? [m] : []).forEach((mm) =>
+            Object.values(mm).forEach((v) => v instanceof THREE.Texture && gl.initTexture(v)),
+          );
+        });
         onDone(true);
       });
     return () => {

@@ -115,25 +115,6 @@ export function HeroStory() {
   const reduced = useReducedMotion();
   const toggles = useToggles();
   const [active, setActive] = useState(true);
-  // The 3D scene boots only after the loading screen has opened and the headline has
-  // risen, so its heavy start-up (parse, build, first render) never overlaps an animation.
-  const [stageOn, setStageOn] = useState(false);
-  useEffect(() => {
-    let timer = 0;
-    let idle = 0;
-    const off = boot.onReveal(() => {
-      timer = window.setTimeout(() => {
-        const go = () => setStageOn(true);
-        if ("requestIdleCallback" in window) idle = window.requestIdleCallback(go, { timeout: 600 });
-        else go();
-      }, reduced ? 0 : 2200); // after the headline's entrance (~1.9 s) has finished
-    });
-    return () => {
-      off();
-      window.clearTimeout(timer);
-      if (idle) window.cancelIdleCallback(idle);
-    };
-  }, [reduced]);
   const [debug, setDebug] = useState(false);
   const [hinted, setHinted] = useState(false);
 
@@ -415,9 +396,9 @@ export function HeroStory() {
             </p>
           }
         >
-          {stageOn && (
-            <AmbulanceStage active={active} reducedMotion={reduced} debug={debug} words={BG_WORDS} eventSource={stage} />
-          )}
+          {/* mounts straight away: the van builds behind the loading screen, which waits at
+              "Pickup" until its first frame is drawn (see Loader) */}
+          <AmbulanceStage active={active} reducedMotion={reduced} debug={debug} words={BG_WORDS} eventSource={stage} />
         </StageBoundary>
       </div>
 

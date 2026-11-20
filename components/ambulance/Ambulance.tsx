@@ -261,10 +261,12 @@ export function Ambulance() {
   // (shaders compiled, textures uploaded), so the heavy first render can never eat into
   // it and the van always enters smoothly from the left. Skipped with reduced motion.
   const driveIn = useRef<gsap.core.Tween | null>(null);
+  const offDrive = useRef<() => void>(() => {});
   useEffect(() => {
     rig.intro = rig.reducedMotion ? 1 : 0;
     rig.invalidate();
     return () => {
+      offDrive.current();
       driveIn.current?.kill();
       rig.intro = 1;
     };
@@ -310,8 +312,11 @@ export function Ambulance() {
       requestAnimationFrame(() => {
         // this frame has been drawn
         boot.mark("frame");
-        if (!rig.reducedMotion)
-          driveIn.current = gsap.fromTo(rig, { intro: 0 }, { intro: 1, duration: 3.1, ease: "none", delay: 0.12 });
+        if (rig.reducedMotion) return;
+        // drive in as the loading screen parts (straight away if it already has)
+        offDrive.current = boot.onReveal(() => {
+          driveIn.current = gsap.fromTo(rig, { intro: 0 }, { intro: 1, duration: 3.1, ease: "none", delay: 0.05 });
+        });
       });
     }
     const t = state.clock.elapsedTime;

@@ -13,6 +13,7 @@ export type BootStep = keyof typeof WEIGHTS;
 
 const done = new Set<BootStep>();
 const waiting = new Set<() => void>();
+const markWaiters = new Map<BootStep, (() => void)[]>();
 let revealed = false;
 
 export const boot = {
@@ -20,6 +21,13 @@ export const boot = {
     if (done.has(step)) return;
     done.add(step);
     performance.mark(`boot:${step}`); // visible in DevTools > Performance > Timings
+    markWaiters.get(step)?.forEach((f) => f());
+    markWaiters.delete(step);
+  },
+  /** Resolves once `step` has been marked (immediately if it already has). */
+  whenMarked(step: BootStep) {
+    if (done.has(step)) return Promise.resolve();
+    return new Promise<void>((resolve) => markWaiters.set(step, [...(markWaiters.get(step) ?? []), resolve]));
   },
   /** 0‥1, the share of weighted milestones reached. */
   progress() {
