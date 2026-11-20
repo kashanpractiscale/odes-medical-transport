@@ -414,8 +414,7 @@ export function HeroStory() {
       </div>
 
       {/* drag surface + copy: BENEATH the 3D layer (z-5), so the van passes in front of the
-          words. The canvas ignores pointer events, so drags and CTA taps still land here. */}
-      <div className="sticky top-0 z-[4] -mt-[100svh] h-svh overflow-clip">
+          words. The canvas ignores pointer events, so drags and CTA taps still land here. */}      <div className="sticky top-0 z-[4] -mt-[100svh] h-svh overflow-clip">
         <div
           ref={stage}
           tabIndex={0}
@@ -489,8 +488,12 @@ export function HeroStory() {
 
       </div>
 
-      {/* film (vignette, grain) and the control dock: ABOVE the 3D layer */}
-      <div className="pointer-events-none sticky top-0 z-10 -mt-[100svh] h-svh overflow-clip">
+      {/* film (vignette, grain) and the control dock: also BENEATH the 3D layer, so the van
+          is the top-most thing in the hero. Same z as the copy layer and later in the DOM,
+          so it still stacks above the copy. The page-level 3D layer itself stays at z-5:
+          later sections (the Mission palms at z-10) rely on passing in front of the van.
+          The canvas is click-through, so the controls stay usable under the van. */}
+      <div className="pointer-events-none sticky top-0 z-[4] -mt-[100svh] h-svh overflow-clip">
         <div aria-hidden className="studio-vignette absolute inset-0" />
         <div aria-hidden className="studio-grain absolute inset-0" />
 
