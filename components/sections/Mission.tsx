@@ -202,7 +202,7 @@ export function Mission() {
         <div data-plane="words" className="absolute inset-x-0 bottom-[31%] flex justify-center sm:bottom-[27%]">
           <p
             data-big
-            className="opacity-0 text-center font-display text-[clamp(4.5rem,19vw,15rem)] sm:text-[clamp(4.5rem,16vw,15rem)] uppercase leading-[0.82] tracking-tight text-[#fff6e3]"
+            className="opacity-0 text-center font-display text-[clamp(4.5rem,min(19vw,calc(37vh_-_4.5rem)),15rem)] sm:text-[clamp(4.5rem,min(16vw,calc(37vh_-_4.5rem)),15rem)] uppercase leading-[0.82] tracking-tight text-[#fff6e3]"
           >
             One ride
             <br />
@@ -300,7 +300,7 @@ export function Mission() {
               </a>
               <a
                 href={COMPANY.phoneHref}
-                className={`${BTN} border border-white/30 bg-black/20 text-white backdrop-blur-sm hover:border-white/70`}
+                className={`${BTN} border border-white/25 bg-ink/85 text-white shadow-[0_12px_30px_-12px_rgb(0_0_0/0.75)] backdrop-blur-md hover:border-white/60 hover:bg-ink`}
               >
                 Call {COMPANY.phone}
               </a>
